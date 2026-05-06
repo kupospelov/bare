@@ -351,6 +351,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                     debug!("Output {}: scale change: {}", id, factor);
 
                     o.scale = factor;
+                    o.workspace_group.height = BAR_WIDTH as i32 * factor;
                 }
             }
             wl_output::Event::Done => {

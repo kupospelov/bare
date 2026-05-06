@@ -12,6 +12,7 @@ pub const COLOR_BACKGROUND: [u8; 4] = [0, 0, 0, 255];
 pub const COLOR_ACTIVE: [u8; 4] = [255, 255, 255, 255];
 pub const COLOR_INACTIVE: [u8; 4] = [100, 100, 100, 255];
 pub const COLOR_URGENT: [u8; 4] = [220, 50, 50, 255];
+pub const COLOR_WORKSPACE_ACTIVE_BG: [u8; 4] = [0x28, 0x55, 0x77, 0xff];
 pub const FONT_SIZE: u32 = 8;
 
 fn to_bgra(rgba: [u8; 4]) -> [u8; 4] {
@@ -29,6 +30,27 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(rasterizer: Rasterizer) -> Self {
         Self { rasterizer }
+    }
+
+    pub fn fill_rect(
+        &self,
+        mapping: &mut [u8],
+        width: u32,
+        height: u32,
+        y: i32,
+        rect_height: i32,
+        color: [u8; 4],
+    ) {
+        let y_start = y.max(0) as usize;
+        let y_end = (y + rect_height).clamp(0, height as i32) as usize;
+        if y_start >= y_end {
+            return;
+        }
+
+        let bgra = to_bgra(color);
+        let (chunks, _) = mapping.as_chunks_mut::<4>();
+        let row_len = width as usize;
+        chunks[y_start * row_len..y_end * row_len].fill(bgra);
     }
 
     #[allow(clippy::too_many_arguments)]

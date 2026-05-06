@@ -40,7 +40,7 @@ impl Output {
             scale: 1,
             configured: false,
             group: None,
-            workspace_group: blocks::workspaces::Workspaces::new(),
+            workspace_group: blocks::workspaces::Workspaces::new(width as i32),
             buffer: None,
             render: false,
         }
