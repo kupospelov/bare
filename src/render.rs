@@ -66,29 +66,33 @@ impl Renderer {
         ft_size: u32,
     ) {
         let chars: Vec<char> = text.chars().collect();
-        let (first_xmin, first_ymin, first_height) = if let Some(&c) = chars.first() {
-            let b = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
-            (b.xmin, b.ymin, b.height as i32)
-        } else {
+        if chars.is_empty() {
             return;
-        };
-        let (last_xmin, last_width, last_advance) = if let Some(&c) = chars.last() {
+        }
+
+        let mut total_advance = 0_i32;
+        let mut max_ymax = i32::MIN;
+        let mut min_ymin = i32::MAX;
+        for &c in &chars {
             let b = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
+            total_advance += b.advance_width as i32;
+            max_ymax = max_ymax.max(b.ymin + b.height as i32);
+            min_ymin = min_ymin.min(b.ymin);
+        }
+
+        let first_xmin = self
+            .rasterizer
+            .rasterize(*chars.first().unwrap(), ft_size, ft_color, bg_color)
+            .xmin;
+        let (last_xmin, last_width, last_advance) = {
+            let b = self
+                .rasterizer
+                .rasterize(*chars.last().unwrap(), ft_size, ft_color, bg_color);
             (b.xmin, b.width as i32, b.advance_width as i32)
-        } else {
-            return;
         };
-        let total_advance: i32 = chars
-            .iter()
-            .map(|&c| {
-                self.rasterizer
-                    .rasterize(c, ft_size, ft_color, bg_color)
-                    .advance_width as i32
-            })
-            .sum();
 
         let text_width = total_advance - first_xmin - last_advance + last_xmin + last_width;
-        let baseline = y + (ft_size as i32 + first_height + 1) / 2 + first_ymin;
+        let baseline = y + (ft_size as i32 + max_ymax + min_ymin + 1) / 2;
         let mut x = (width as i32 - text_width + 1) / 2 - first_xmin;
         let (dst, _) = mapping.as_chunks_mut::<4>();
         for &c in &chars {
@@ -250,6 +254,19 @@ mod tests {
             (left - right).abs() <= 1,
             "'{s}' (ft={ft_size}): left={left}, right={right} (x=[{xmin},{xmax}])"
         );
+    }
+
+    #[test]
+    fn letters_are_centered() {
+        let Some(mut r) = make_renderer() else {
+            return;
+        };
+        for a in 'a'..='z' {
+            assert_centered(&mut r, &a.to_string(), FT_SIZE);
+            for b in 'a'..='z' {
+                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE);
+            }
+        }
     }
 
     #[test]
