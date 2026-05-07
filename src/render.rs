@@ -65,9 +65,20 @@ impl Renderer {
         bg_color: [u8; 4],
         ft_size: u32,
     ) {
-        let baseline = y + ft_size as i32;
         let chars: Vec<char> = text.chars().collect();
-        let total_width: i32 = chars
+        let (first_xmin, first_ymin, first_height) = if let Some(&c) = chars.first() {
+            let b = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
+            (b.xmin, b.ymin, b.height as i32)
+        } else {
+            return;
+        };
+        let (last_xmin, last_width, last_advance) = if let Some(&c) = chars.last() {
+            let b = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
+            (b.xmin, b.width as i32, b.advance_width as i32)
+        } else {
+            return;
+        };
+        let total_advance: i32 = chars
             .iter()
             .map(|&c| {
                 self.rasterizer
@@ -76,7 +87,9 @@ impl Renderer {
             })
             .sum();
 
-        let mut x = (width as i32 - total_width) / 2;
+        let text_width = total_advance - first_xmin - last_advance + last_xmin + last_width;
+        let baseline = y + (ft_size as i32 + first_height + 1) / 2 + first_ymin;
+        let mut x = (width as i32 - text_width + 1) / 2 - first_xmin;
         let (dst, _) = mapping.as_chunks_mut::<4>();
         for &c in &chars {
             let bitmap = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
@@ -176,5 +189,83 @@ impl Renderer {
         output.surface.commit();
         output.render = false;
         debug!("Output {}: rendering done", output_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raster::Rasterizer;
+
+    const FONT_PATH: &str = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
+    const SIZE: u32 = 28;
+    const FT_SIZE: u32 = 13;
+    const FG: [u8; 4] = [255, 255, 255, 255];
+    const BG: [u8; 4] = [0, 0, 0, 255];
+
+    fn make_renderer() -> Option<Renderer> {
+        let bytes = std::fs::read(FONT_PATH).ok()?;
+        let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()?;
+        Some(Renderer::new(Rasterizer::new(font)))
+    }
+
+    fn glyph_bounds(buf: &[u8]) -> Option<(i32, i32, i32, i32)> {
+        let mut xmin = i32::MAX;
+        let mut xmax = i32::MIN;
+        let mut ymin = i32::MAX;
+        let mut ymax = i32::MIN;
+        for y in 0..SIZE as i32 {
+            for x in 0..SIZE as i32 {
+                let i = (y as usize * SIZE as usize + x as usize) * 4;
+                if buf[i] != 0 || buf[i + 1] != 0 || buf[i + 2] != 0 {
+                    xmin = xmin.min(x);
+                    xmax = xmax.max(x);
+                    ymin = ymin.min(y);
+                    ymax = ymax.max(y);
+                }
+            }
+        }
+        (xmin <= xmax).then_some((xmin, xmax, ymin, ymax))
+    }
+
+    fn assert_centered(r: &mut Renderer, s: &str, ft_size: u32) {
+        let y = (SIZE as i32 - ft_size as i32) / 2;
+        let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
+        for px in buf.chunks_exact_mut(4) {
+            px.copy_from_slice(&[0, 0, 0, 255]);
+        }
+        r.render_text(&mut buf, SIZE, SIZE, y, s, FG, BG, ft_size);
+
+        let (xmin, xmax, ymin, ymax) =
+            glyph_bounds(&buf).unwrap_or_else(|| panic!("'{s}' rendered no pixels"));
+        let above = ymin;
+        let below = SIZE as i32 - 1 - ymax;
+        let left = xmin;
+        let right = SIZE as i32 - 1 - xmax;
+        assert!(
+            (above - below).abs() <= 1,
+            "'{s}' (ft={ft_size}): above={above}, below={below} (y=[{ymin},{ymax}])"
+        );
+        assert!(
+            (left - right).abs() <= 1,
+            "'{s}' (ft={ft_size}): left={left}, right={right} (x=[{xmin},{xmax}])"
+        );
+    }
+
+    #[test]
+    fn digits_are_centered() {
+        let Some(mut r) = make_renderer() else {
+            return;
+        };
+        let ft = FT_SIZE * 2 / 3;
+        for a in '0'..='9' {
+            assert_centered(&mut r, &a.to_string(), FT_SIZE);
+            for b in '0'..='9' {
+                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE);
+                for c in '0'..='9' {
+                    assert_centered(&mut r, &format!("{a}{b}{c}"), ft);
+                }
+            }
+        }
     }
 }
