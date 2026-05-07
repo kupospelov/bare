@@ -35,7 +35,7 @@ impl Output {
             output,
             surface,
             layer_surface,
-            width: width,
+            width,
             height: 0,
             scale: 1,
             configured: false,

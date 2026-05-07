@@ -1,0 +1,5 @@
+#!/bin/sh -e
+
+cargo fmt --all -- --check
+cargo clippy --all --all-targets
+cargo test
