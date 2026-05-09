@@ -1,5 +1,6 @@
 use crate::blocks;
 use crate::blocks::Block;
+use crate::font;
 use crate::raster;
 use crate::render::Renderer;
 use crate::wayland::output::Output;
@@ -21,7 +22,7 @@ use wayland_protocols::ext::workspace::v1::client::{
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 const BAR_WIDTH: u32 = 28;
-const FONT: &str = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
+const FONT: &str = "Sans Bold";
 
 #[derive(Clone)]
 pub struct Workspace {
@@ -54,9 +55,7 @@ pub struct State {
 
 impl State {
     pub fn new(qh: QueueHandle<State>) -> Self {
-        let font_bytes = std::fs::read(FONT).expect("Failed to read font");
-        let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
-            .expect("Failed to load font");
+        let (font, font_size) = font::load(FONT);
         Self {
             qh,
             compositor: None,
@@ -68,7 +67,7 @@ impl State {
             pointer: None,
             workspace_handles: HashMap::new(),
             workspace_manager: None,
-            renderer: Renderer::new(raster::Rasterizer::new(font)),
+            renderer: Renderer::new(raster::Rasterizer::new(font), font_size),
             blocks: vec![
                 Box::new(blocks::time::Time::new()),
                 Box::new(blocks::battery::Battery::new()),

@@ -1,4 +1,5 @@
 mod blocks;
+mod font;
 mod log;
 mod raster;
 mod render;

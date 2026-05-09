@@ -13,23 +13,22 @@ pub const COLOR_ACTIVE: [u8; 4] = [255, 255, 255, 255];
 pub const COLOR_INACTIVE: [u8; 4] = [100, 100, 100, 255];
 pub const COLOR_URGENT: [u8; 4] = [220, 50, 50, 255];
 pub const COLOR_WORKSPACE_ACTIVE_BG: [u8; 4] = [0x28, 0x55, 0x77, 0xff];
-pub const FONT_SIZE: u32 = 8;
 
 fn to_bgra(rgba: [u8; 4]) -> [u8; 4] {
     [rgba[2], rgba[1], rgba[0], rgba[3]]
 }
 
-fn ft_size_px(scale: i32) -> u32 {
-    FONT_SIZE * scale as u32 * 96 / 72
-}
-
 pub struct Renderer {
     pub rasterizer: Rasterizer,
+    font_size: u32,
 }
 
 impl Renderer {
-    pub fn new(rasterizer: Rasterizer) -> Self {
-        Self { rasterizer }
+    pub fn new(rasterizer: Rasterizer, font_size: u32) -> Self {
+        Self {
+            rasterizer,
+            font_size,
+        }
     }
 
     pub fn fill_rect(
@@ -155,7 +154,7 @@ impl Renderer {
         let (chunks, _) = mapping.as_chunks_mut::<4>();
         chunks.fill(bg_pixel);
 
-        let font_size = ft_size_px(scale);
+        let font_size = self.font_size * scale as u32;
         output.workspace_group.render(
             self,
             mapping,
@@ -199,18 +198,17 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::font;
     use crate::raster::Rasterizer;
 
-    const FONT_PATH: &str = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
     const SIZE: u32 = 28;
     const FT_SIZE: u32 = 13;
     const FG: [u8; 4] = [255, 255, 255, 255];
     const BG: [u8; 4] = [0, 0, 0, 255];
 
-    fn make_renderer() -> Option<Renderer> {
-        let bytes = std::fs::read(FONT_PATH).ok()?;
-        let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()?;
-        Some(Renderer::new(Rasterizer::new(font)))
+    fn make_renderer() -> Renderer {
+        let (font, size) = font::load("Sans Bold");
+        Renderer::new(Rasterizer::new(font), size)
     }
 
     fn glyph_bounds(buf: &[u8]) -> Option<(i32, i32, i32, i32)> {
@@ -258,9 +256,7 @@ mod tests {
 
     #[test]
     fn letters_are_centered() {
-        let Some(mut r) = make_renderer() else {
-            return;
-        };
+        let mut r = make_renderer();
         for a in 'a'..='z' {
             assert_centered(&mut r, &a.to_string(), FT_SIZE);
             for b in 'a'..='z' {
@@ -271,9 +267,7 @@ mod tests {
 
     #[test]
     fn digits_are_centered() {
-        let Some(mut r) = make_renderer() else {
-            return;
-        };
+        let mut r = make_renderer();
         let ft = FT_SIZE * 2 / 3;
         for a in '0'..='9' {
             assert_centered(&mut r, &a.to_string(), FT_SIZE);
