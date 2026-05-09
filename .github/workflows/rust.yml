@@ -7,6 +7,7 @@ on:
     branches: [ "master" ]
 
 env:
+  DEPS: libfontconfig-dev
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -35,6 +36,11 @@ jobs:
         with:
           show-progress: false
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ${{ env.DEPS }}
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -52,10 +58,12 @@ jobs:
       with:
         show-progress: false
 
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y ${{ env.DEPS }}
+
     - uses: dtolnay/rust-toolchain@stable
-        
-    - name: Build
-      run: cargo build --verbose
       
     - name: Test
       run: cargo test --verbose
