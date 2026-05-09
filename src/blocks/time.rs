@@ -41,29 +41,33 @@ impl Block for Time {
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
-        mapping: &mut [u8],
-        width: u32,
-        height: u32,
+        map: &mut render::Map<'_>,
         y: i32,
         font_size: u32,
         bg_color: [u8; 4],
     ) {
         let margin = super::inner_margin(font_size);
         renderer.render_text(
-            mapping,
-            width,
-            height,
-            y,
+            map,
+            render::Region {
+                x: 0,
+                y,
+                w: map.width,
+                h: font_size,
+            },
             &self.hours,
             render::COLOR_INACTIVE,
             bg_color,
             font_size,
         );
         renderer.render_text(
-            mapping,
-            width,
-            height,
-            y + font_size as i32 + margin,
+            map,
+            render::Region {
+                x: 0,
+                y: y + font_size as i32 + margin,
+                w: map.width,
+                h: font_size,
+            },
             &self.minutes,
             render::COLOR_INACTIVE,
             bg_color,

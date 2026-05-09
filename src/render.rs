@@ -18,6 +18,37 @@ fn to_bgra(rgba: [u8; 4]) -> [u8; 4] {
     [rgba[2], rgba[1], rgba[0], rgba[3]]
 }
 
+#[derive(Clone, Copy)]
+pub struct Region {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+pub struct Map<'a> {
+    pub data: &'a mut [u8],
+    pub width: u32,
+    pub height: u32,
+}
+
+impl<'a> Map<'a> {
+    pub fn new(data: &'a mut [u8], height: u32) -> Self {
+        let width = data.len() as u32 / 4 / height;
+        Self {
+            data,
+            width,
+            height,
+        }
+    }
+
+    pub fn clear(&mut self, color: [u8; 4]) {
+        let bgra = to_bgra(color);
+        let (chunks, _) = self.data.as_chunks_mut::<4>();
+        chunks.fill(bgra);
+    }
+}
+
 pub struct Renderer {
     pub rasterizer: Rasterizer,
     font_size: u32,
@@ -31,34 +62,25 @@ impl Renderer {
         }
     }
 
-    pub fn fill_rect(
-        &self,
-        mapping: &mut [u8],
-        width: u32,
-        height: u32,
-        y: i32,
-        rect_height: i32,
-        color: [u8; 4],
-    ) {
-        let y_start = y.max(0) as usize;
-        let y_end = (y + rect_height).clamp(0, height as i32) as usize;
-        if y_start >= y_end {
+    pub fn fill_rect(&self, map: &mut Map<'_>, region: Region, color: [u8; 4]) {
+        let y = region.y as usize..(region.y + region.h as i32) as usize;
+        let x = region.x as usize..(region.x + region.w as i32) as usize;
+        if y.is_empty() || x.is_empty() {
             return;
         }
 
         let bgra = to_bgra(color);
-        let (chunks, _) = mapping.as_chunks_mut::<4>();
-        let row_len = width as usize;
-        chunks[y_start * row_len..y_end * row_len].fill(bgra);
+        let stride = map.width as usize;
+        let (chunks, _) = map.data.as_chunks_mut::<4>();
+        for row in y {
+            chunks[row * stride + x.start..row * stride + x.end].fill(bgra);
+        }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn render_text(
         &mut self,
-        mapping: &mut [u8],
-        width: u32,
-        height: u32,
-        y: i32,
+        map: &mut Map<'_>,
+        region: Region,
         text: &str,
         ft_color: [u8; 4],
         bg_color: [u8; 4],
@@ -78,37 +100,40 @@ impl Renderer {
             max_ymax = max_ymax.max(b.ymin + b.height as i32);
             min_ymin = min_ymin.min(b.ymin);
         }
-
         let first_xmin = self
             .rasterizer
             .rasterize(*chars.first().unwrap(), ft_size, ft_color, bg_color)
             .xmin;
-        let (last_xmin, last_width, last_advance) = {
-            let b = self
-                .rasterizer
-                .rasterize(*chars.last().unwrap(), ft_size, ft_color, bg_color);
-            (b.xmin, b.width as i32, b.advance_width as i32)
+        let text_width = {
+            let last =
+                self.rasterizer
+                    .rasterize(*chars.last().unwrap(), ft_size, ft_color, bg_color);
+            total_advance - first_xmin - last.advance_width as i32 + last.xmin + last.width as i32
         };
 
-        let text_width = total_advance - first_xmin - last_advance + last_xmin + last_width;
-        let baseline = y + (ft_size as i32 + max_ymax + min_ymin + 1) / 2;
-        let mut x = (width as i32 - text_width + 1) / 2 - first_xmin;
-        let (dst, _) = mapping.as_chunks_mut::<4>();
+        let baseline = region.y + (region.h as i32 + max_ymax + min_ymin + 1) / 2;
+        let stride = map.width as usize;
+
+        let mut x_start = region.x + (region.w as i32 - text_width + 1) / 2 - first_xmin;
+        let x_end = region.x + region.w as i32;
+
+        let (dst, _) = map.data.as_chunks_mut::<4>();
         for &c in &chars {
             let bitmap = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
-            let (src, _) = bitmap.pixels.as_chunks::<4>();
+            let offset_y = baseline - bitmap.ymin - bitmap.height as i32;
+            let offset_x = x_start + bitmap.xmin;
 
+            let (src, _) = bitmap.pixels.as_chunks::<4>();
             for row in 0..bitmap.height {
                 for col in 0..bitmap.width {
-                    let px_y = baseline - bitmap.ymin - bitmap.height as i32 + row as i32;
-                    let px_x = x + col as i32 + bitmap.xmin;
-                    if px_y >= 0 && px_y < height as i32 && px_x >= 0 && px_x < width as i32 {
-                        dst[px_y as usize * width as usize + px_x as usize] =
-                            src[row * bitmap.width + col];
+                    let px_y = offset_y + row as i32;
+                    let px_x = offset_x + col as i32;
+                    if (0..map.height as i32).contains(&px_y) && (region.x..x_end).contains(&px_x) {
+                        dst[px_y as usize * stride + px_x as usize] = src[row * bitmap.width + col];
                     }
                 }
             }
-            x += bitmap.advance_width as i32;
+            x_start += bitmap.advance_width as i32;
         }
     }
 
@@ -147,37 +172,20 @@ impl Renderer {
         }
 
         let bg_color = COLOR_BACKGROUND;
-        let bg_pixel = to_bgra(bg_color);
         let start = buffer.back * frame_size;
-        let mapping = &mut buffer.mmap[start..start + frame_size];
-
-        let (chunks, _) = mapping.as_chunks_mut::<4>();
-        chunks.fill(bg_pixel);
+        let mut map = Map::new(&mut buffer.mmap[start..start + frame_size], physical_height);
+        map.clear(bg_color);
 
         let font_size = self.font_size * scale as u32;
-        output.workspace_group.render(
-            self,
-            mapping,
-            physical_width,
-            physical_height,
-            0,
-            font_size,
-            bg_color,
-        );
+        output
+            .workspace_group
+            .render(self, &mut map, 0, font_size, bg_color);
 
         let mut y = physical_height as i32;
         let block_margin = font_size;
         for block in blocks.iter_mut() {
             y -= block.height(font_size);
-            block.render(
-                self,
-                mapping,
-                physical_width,
-                physical_height,
-                y,
-                font_size,
-                bg_color,
-            );
+            block.render(self, &mut map, y, font_size, bg_color);
             y -= block_margin as i32;
         }
 
@@ -231,12 +239,17 @@ mod tests {
     }
 
     fn assert_centered(r: &mut Renderer, s: &str, ft_size: u32) {
-        let y = (SIZE as i32 - ft_size as i32) / 2;
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
         for px in buf.chunks_exact_mut(4) {
             px.copy_from_slice(&[0, 0, 0, 255]);
         }
-        r.render_text(&mut buf, SIZE, SIZE, y, s, FG, BG, ft_size);
+        let region = Region {
+            x: 0,
+            y: 0,
+            w: SIZE,
+            h: SIZE,
+        };
+        r.render_text(&mut Map::new(&mut buf, SIZE), region, s, FG, BG, ft_size);
 
         let (xmin, xmax, ymin, ymax) =
             glyph_bounds(&buf).unwrap_or_else(|| panic!("'{s}' rendered no pixels"));

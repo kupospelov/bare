@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct Config {
     pub bar: BarConfig,
+    pub workspaces: WorkspacesConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +23,12 @@ impl Default for BarConfig {
             width: 28,
         }
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct WorkspacesConfig {
+    pub gaps: [u32; 4],
 }
 
 impl Config {

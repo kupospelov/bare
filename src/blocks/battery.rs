@@ -33,9 +33,7 @@ impl Block for Battery {
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
-        mapping: &mut [u8],
-        width: u32,
-        height: u32,
+        map: &mut render::Map<'_>,
         y: i32,
         font_size: u32,
         bg_color: [u8; 4],
@@ -49,20 +47,26 @@ impl Block for Battery {
         let margin = super::inner_margin(font_size);
         let label_size = font_size * 2 / 3;
         renderer.render_text(
-            mapping,
-            width,
-            height,
-            y,
+            map,
+            render::Region {
+                x: 0,
+                y,
+                w: map.width,
+                h: label_size,
+            },
             "BAT",
             render::COLOR_INACTIVE,
             bg_color,
             label_size,
         );
         renderer.render_text(
-            mapping,
-            width,
-            height,
-            y + label_size as i32 + margin,
+            map,
+            render::Region {
+                x: 0,
+                y: y + label_size as i32 + margin,
+                w: map.width,
+                h: font_size,
+            },
             capacity,
             render::COLOR_INACTIVE,
             bg_color,

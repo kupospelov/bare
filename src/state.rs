@@ -100,7 +100,14 @@ impl State {
 
         self.outputs.insert(
             id,
-            Output::new(name, self.config.bar.width, output, surface, layer_surface),
+            Output::new(
+                name,
+                self.config.bar.width,
+                self.config.workspaces.gaps,
+                output,
+                surface,
+                layer_surface,
+            ),
         );
     }
 
@@ -350,7 +357,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                     debug!("Output {}: scale change: {}", id, factor);
 
                     o.scale = factor;
-                    o.workspace_group.height = state.config.bar.width as i32 * factor;
+                    o.workspace_group.set_scale(&state.config, factor);
                 }
             }
             wl_output::Event::Done => {

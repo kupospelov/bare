@@ -2,6 +2,8 @@ pub mod battery;
 pub mod time;
 pub mod workspaces;
 
+use crate::config::Config;
+
 pub fn inner_margin(font_size: u32) -> i32 {
     font_size as i32 / 5
 }
@@ -12,13 +14,10 @@ pub trait Block {
 
     /// Render into `mapping`. `y` is the physical-pixel bottom anchor (lower y = higher on
     /// screen).
-    #[allow(clippy::too_many_arguments)]
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
-        mapping: &mut [u8],
-        width: u32,
-        height: u32,
+        map: &mut crate::render::Map<'_>,
         y: i32,
         font_size: u32,
         bg_color: [u8; 4],
@@ -34,4 +33,7 @@ pub trait Block {
     fn reschedule(&self) -> calloop::timer::TimeoutAction {
         calloop::timer::TimeoutAction::Drop
     }
+
+    /// React to an output scale change.
+    fn set_scale(&mut self, _config: &Config, _scale: i32) {}
 }

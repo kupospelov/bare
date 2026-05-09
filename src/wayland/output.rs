@@ -26,6 +26,7 @@ impl Output {
     pub fn new(
         name: u32,
         width: u32,
+        gaps: [u32; 4],
         output: wl_output::WlOutput,
         surface: wl_surface::WlSurface,
         layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
@@ -40,7 +41,10 @@ impl Output {
             scale: 1,
             configured: false,
             group: None,
-            workspace_group: blocks::workspaces::Workspaces::new(width as i32),
+            workspace_group: blocks::workspaces::Workspaces::new(
+                width as i32,
+                gaps.map(|v| v as i32),
+            ),
             buffer: None,
             render: false,
         }
