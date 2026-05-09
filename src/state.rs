@@ -1,5 +1,6 @@
 use crate::blocks;
 use crate::blocks::Block;
+use crate::config::Config;
 use crate::font;
 use crate::raster;
 use crate::render::Renderer;
@@ -21,9 +22,6 @@ use wayland_protocols::ext::workspace::v1::client::{
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-const BAR_WIDTH: u32 = 28;
-const FONT: &str = "Sans Bold";
-
 #[derive(Clone)]
 pub struct Workspace {
     pub handle: ext_workspace_handle_v1::ExtWorkspaceHandleV1,
@@ -39,6 +37,7 @@ pub struct Group {
 }
 
 pub struct State {
+    pub config: Config,
     pub qh: QueueHandle<State>,
     pub compositor: Option<wl_compositor::WlCompositor>,
     pub shm: Option<wl_shm::WlShm>,
@@ -54,9 +53,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(qh: QueueHandle<State>) -> Self {
-        let (font, font_size) = font::load(FONT);
+    pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
+        let (font, font_size) = font::load(&config.bar.font);
         Self {
+            config,
             qh,
             compositor: None,
             shm: None,
@@ -94,13 +94,13 @@ impl State {
                 | zwlr_layer_surface_v1::Anchor::Top
                 | zwlr_layer_surface_v1::Anchor::Bottom,
         );
-        layer_surface.set_size(BAR_WIDTH, 0);
-        layer_surface.set_exclusive_zone(BAR_WIDTH as i32);
+        layer_surface.set_size(self.config.bar.width, 0);
+        layer_surface.set_exclusive_zone(self.config.bar.width as i32);
         surface.commit();
 
         self.outputs.insert(
             id,
-            Output::new(name, BAR_WIDTH, output, surface, layer_surface),
+            Output::new(name, self.config.bar.width, output, surface, layer_surface),
         );
     }
 
@@ -350,7 +350,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                     debug!("Output {}: scale change: {}", id, factor);
 
                     o.scale = factor;
-                    o.workspace_group.height = BAR_WIDTH as i32 * factor;
+                    o.workspace_group.height = state.config.bar.width as i32 * factor;
                 }
             }
             wl_output::Event::Done => {

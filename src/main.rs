@@ -1,4 +1,5 @@
 mod blocks;
+mod config;
 mod font;
 mod log;
 mod raster;
@@ -23,7 +24,7 @@ fn main() {
         EventLoop::try_new().expect("Failed to create event loop");
     let handle = event_loop.handle();
 
-    let mut state = State::new(qh.clone());
+    let mut state = State::new(config::Config::load(), qh.clone());
     event_queue.roundtrip(&mut state).unwrap();
     let _workspace_manager = state
         .workspace_manager
