@@ -1,7 +1,8 @@
 use super::Block;
 use crate::config::Config;
 use crate::render::{
-    self, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_URGENT, COLOR_WORKSPACE_ACTIVE_BG, Renderer,
+    self, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_URGENT, COLOR_WORKSPACE_ACTIVE_BG,
+    COLOR_WORKSPACE_ACTIVE_BR, Renderer,
 };
 use crate::state::Workspace;
 use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
@@ -10,15 +11,17 @@ pub struct Workspaces {
     pub items: Vec<Workspace>,
     pub height: i32,
     pub gaps: [i32; 4],
+    pub borders: [i32; 4],
     y_start: i32,
 }
 
 impl Workspaces {
-    pub fn new(height: i32, gaps: [i32; 4]) -> Self {
+    pub fn new(height: i32, gaps: [i32; 4], borders: [i32; 4]) -> Self {
         Self {
             items: Vec::new(),
             height,
             gaps,
+            borders,
             y_start: 0,
         }
     }
@@ -51,7 +54,6 @@ impl Block for Workspaces {
     ) {
         let mut y = y;
         self.y_start = y;
-        let [top, right, bottom, left] = self.gaps;
 
         for ws in &self.items {
             let text_color = if ws.active {
@@ -67,12 +69,27 @@ impl Block for Workspaces {
                 bg_color
             };
 
-            let inner = render::Region {
-                x: left,
-                y: y + top,
-                w: (map.width as i32 - left - right).max(0) as u32,
-                h: (self.height - top - bottom).max(0) as u32,
+            let outer = render::Region {
+                x: self.gaps[3],
+                y: y + self.gaps[0],
+                w: (map.width as i32 - self.gaps[3] - self.gaps[1]).max(0) as u32,
+                h: (self.height - self.gaps[0] - self.gaps[2]).max(0) as u32,
             };
+            let inner = render::Region {
+                x: outer.x + self.borders[3],
+                y: outer.y + self.borders[0],
+                w: (outer.w as i32 - self.borders[3] - self.borders[1]).max(0) as u32,
+                h: (outer.h as i32 - self.borders[0] - self.borders[2]).max(0) as u32,
+            };
+            if ws.active && outer.w > 0 && outer.h > 0 {
+                render_border(
+                    renderer,
+                    map,
+                    outer,
+                    self.borders,
+                    COLOR_WORKSPACE_ACTIVE_BR,
+                );
+            }
 
             if inner.w > 0 && inner.h > 0 {
                 if ws_bg_color != bg_color {
@@ -88,5 +105,70 @@ impl Block for Workspaces {
     fn set_scale(&mut self, config: &Config, scale: i32) {
         self.height = config.bar.width as i32 * scale;
         self.gaps = config.workspaces.gaps.map(|v| v as i32 * scale);
+        self.borders = config.workspaces.borders.map(|v| v as i32 * scale);
+    }
+}
+
+fn render_border(
+    renderer: &Renderer,
+    map: &mut render::Map<'_>,
+    outer: render::Region,
+    borders: [i32; 4],
+    color: [u8; 4],
+) {
+    // top
+    if borders[0] > 0 {
+        renderer.fill_rect(
+            map,
+            render::Region {
+                x: outer.x,
+                y: outer.y,
+                w: outer.w,
+                h: borders[0] as u32,
+            },
+            color,
+        );
+    }
+
+    // right
+    if borders[1] > 0 {
+        renderer.fill_rect(
+            map,
+            render::Region {
+                x: outer.x + outer.w as i32 - borders[1],
+                y: outer.y,
+                w: borders[1] as u32,
+                h: outer.h,
+            },
+            color,
+        );
+    }
+
+    // bottom
+    if borders[2] > 0 {
+        renderer.fill_rect(
+            map,
+            render::Region {
+                x: outer.x,
+                y: outer.y + outer.h as i32 - borders[2],
+                w: outer.w,
+                h: borders[2] as u32,
+            },
+            color,
+        );
+    }
+
+    // left
+    if borders[3] > 0 {
+        renderer.fill_rect(
+            map,
+            render::Region {
+                x: outer.x,
+                y: outer.y,
+                w: borders[3] as u32,
+                h: outer.h,
+            },
+            color,
+        );
     }
 }

@@ -13,6 +13,7 @@ pub const COLOR_ACTIVE: [u8; 4] = [255, 255, 255, 255];
 pub const COLOR_INACTIVE: [u8; 4] = [100, 100, 100, 255];
 pub const COLOR_URGENT: [u8; 4] = [220, 50, 50, 255];
 pub const COLOR_WORKSPACE_ACTIVE_BG: [u8; 4] = [0x28, 0x55, 0x77, 0xff];
+pub const COLOR_WORKSPACE_ACTIVE_BR: [u8; 4] = [0x4c, 0x78, 0x99, 0xff];
 
 fn to_bgra(rgba: [u8; 4]) -> [u8; 4] {
     [rgba[2], rgba[1], rgba[0], rgba[3]]

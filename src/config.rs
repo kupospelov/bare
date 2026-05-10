@@ -29,6 +29,7 @@ impl Default for BarConfig {
 #[serde(default)]
 pub struct WorkspacesConfig {
     pub gaps: [u32; 4],
+    pub borders: [u32; 4],
 }
 
 impl Config {

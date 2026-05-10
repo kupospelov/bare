@@ -104,6 +104,7 @@ impl State {
                 name,
                 self.config.bar.width,
                 self.config.workspaces.gaps,
+                self.config.workspaces.borders,
                 output,
                 surface,
                 layer_surface,
