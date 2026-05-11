@@ -1,5 +1,5 @@
 use super::Block;
-use crate::config::Config;
+use crate::config::WorkspaceConfig;
 use crate::render::{
     self, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_URGENT, COLOR_WORKSPACE_ACTIVE_BG,
     COLOR_WORKSPACE_ACTIVE_BR, Renderer,
@@ -10,18 +10,16 @@ use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
 pub struct Workspaces {
     pub items: Vec<Workspace>,
     pub height: i32,
-    pub gaps: [i32; 4],
-    pub borders: [i32; 4],
+    config: WorkspaceConfig,
     y_start: i32,
 }
 
 impl Workspaces {
-    pub fn new(height: i32, gaps: [i32; 4], borders: [i32; 4]) -> Self {
+    pub fn new(height: i32, config: &WorkspaceConfig) -> Self {
         Self {
             items: Vec::new(),
             height,
-            gaps,
-            borders,
+            config: config.scaled(1),
             y_start: 0,
         }
     }
@@ -69,24 +67,31 @@ impl Block for Workspaces {
                 bg_color
             };
 
+            let state = if ws.active {
+                &self.config.active
+            } else if ws.urgent {
+                &self.config.urgent
+            } else {
+                &self.config.inactive
+            };
             let outer = render::Region {
-                x: self.gaps[3],
-                y: y + self.gaps[0],
-                w: (map.width as i32 - self.gaps[3] - self.gaps[1]).max(0) as u32,
-                h: (self.height - self.gaps[0] - self.gaps[2]).max(0) as u32,
+                x: state.gaps[3],
+                y: y + state.gaps[0],
+                w: (map.width as i32 - state.gaps[3] - state.gaps[1]).max(0) as u32,
+                h: (self.height - state.gaps[0] - state.gaps[2]).max(0) as u32,
             };
             let inner = render::Region {
-                x: outer.x + self.borders[3],
-                y: outer.y + self.borders[0],
-                w: (outer.w as i32 - self.borders[3] - self.borders[1]).max(0) as u32,
-                h: (outer.h as i32 - self.borders[0] - self.borders[2]).max(0) as u32,
+                x: outer.x + state.borders[3],
+                y: outer.y + state.borders[0],
+                w: (outer.w as i32 - state.borders[3] - state.borders[1]).max(0) as u32,
+                h: (outer.h as i32 - state.borders[0] - state.borders[2]).max(0) as u32,
             };
-            if ws.active && outer.w > 0 && outer.h > 0 {
+            if outer.w > 0 && outer.h > 0 {
                 render_border(
                     renderer,
                     map,
                     outer,
-                    self.borders,
+                    state.borders,
                     COLOR_WORKSPACE_ACTIVE_BR,
                 );
             }
@@ -102,10 +107,9 @@ impl Block for Workspaces {
         }
     }
 
-    fn set_scale(&mut self, config: &Config, scale: i32) {
+    fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {
         self.height = config.bar.width as i32 * scale;
-        self.gaps = config.workspaces.gaps.map(|v| v as i32 * scale);
-        self.borders = config.workspaces.borders.map(|v| v as i32 * scale);
+        self.config = config.workspace.scaled(scale);
     }
 }
 

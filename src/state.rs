@@ -103,8 +103,7 @@ impl State {
             Output::new(
                 name,
                 self.config.bar.width,
-                self.config.workspaces.gaps,
-                self.config.workspaces.borders,
+                &self.config.workspace,
                 output,
                 surface,
                 layer_surface,

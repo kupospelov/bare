@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct Config {
     pub bar: BarConfig,
-    pub workspaces: WorkspacesConfig,
+    pub workspace: WorkspaceConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,11 +25,38 @@ impl Default for BarConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
-pub struct WorkspacesConfig {
-    pub gaps: [u32; 4],
-    pub borders: [u32; 4],
+pub struct WorkspaceConfig {
+    pub active: WorkspaceStateConfig,
+    pub inactive: WorkspaceStateConfig,
+    pub urgent: WorkspaceStateConfig,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct WorkspaceStateConfig {
+    pub gaps: [i32; 4],
+    pub borders: [i32; 4],
+}
+
+impl WorkspaceConfig {
+    pub fn scaled(&self, scale: i32) -> Self {
+        Self {
+            active: self.active.scaled(scale),
+            inactive: self.inactive.scaled(scale),
+            urgent: self.urgent.scaled(scale),
+        }
+    }
+}
+
+impl WorkspaceStateConfig {
+    pub fn scaled(&self, scale: i32) -> Self {
+        Self {
+            gaps: self.gaps.map(|v| v * scale),
+            borders: self.borders.map(|v| v * scale),
+        }
+    }
 }
 
 impl Config {
