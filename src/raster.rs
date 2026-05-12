@@ -1,3 +1,4 @@
+use crate::color::Color;
 use fontdue::Font;
 use std::collections::HashMap;
 
@@ -11,8 +12,8 @@ macro_rules! blend {
 struct CacheKey {
     pub c: char,
     pub ft_size: u32,
-    pub ft_color: [u8; 4],
-    pub bg_color: [u8; 4],
+    pub ft_color: Color,
+    pub bg_color: Color,
 }
 
 pub struct Bitmap {
@@ -41,8 +42,8 @@ impl Rasterizer {
         &mut self,
         c: char,
         ft_size: u32,
-        ft_color: [u8; 4],
-        bg_color: [u8; 4],
+        ft_color: Color,
+        bg_color: Color,
     ) -> &Bitmap {
         let key = CacheKey {
             c,
@@ -56,9 +57,9 @@ impl Rasterizer {
             let (chunks, _) = pixels.as_chunks_mut::<4>();
             for (chunk, alpha) in chunks.iter_mut().zip(bitmap) {
                 let alpha = alpha as u32;
-                let b = blend!(ft_color[2], bg_color[2], alpha);
-                let g = blend!(ft_color[1], bg_color[1], alpha);
-                let r = blend!(ft_color[0], bg_color[0], alpha);
+                let b = blend!(ft_color.b, bg_color.b, alpha);
+                let g = blend!(ft_color.g, bg_color.g, alpha);
+                let r = blend!(ft_color.r, bg_color.r, alpha);
                 *chunk = [b as u8, g as u8, r as u8, 255];
             }
             Bitmap {

@@ -1,4 +1,5 @@
 use super::Block;
+use crate::color::Color;
 use crate::debug;
 use crate::render;
 
@@ -36,7 +37,7 @@ impl Block for Battery {
         map: &mut render::Map<'_>,
         y: i32,
         font_size: u32,
-        bg_color: [u8; 4],
+        bg_color: Color,
     ) {
         let capacity = if self.capacity.is_empty() {
             "??"

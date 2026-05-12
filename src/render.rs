@@ -1,4 +1,5 @@
 use crate::blocks::Block;
+use crate::color::Color;
 use crate::raster::Rasterizer;
 use crate::wayland::buffer::Buffer;
 use crate::wayland::output::Output;
@@ -7,17 +8,12 @@ use wayland_client::QueueHandle;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 
-// Colors are [R, G, B, A]
-pub const COLOR_BACKGROUND: [u8; 4] = [0, 0, 0, 255];
-pub const COLOR_ACTIVE: [u8; 4] = [255, 255, 255, 255];
-pub const COLOR_INACTIVE: [u8; 4] = [100, 100, 100, 255];
-pub const COLOR_URGENT: [u8; 4] = [220, 50, 50, 255];
-pub const COLOR_WORKSPACE_ACTIVE_BG: [u8; 4] = [0x28, 0x55, 0x77, 0xff];
-pub const COLOR_WORKSPACE_ACTIVE_BR: [u8; 4] = [0x4c, 0x78, 0x99, 0xff];
-
-fn to_bgra(rgba: [u8; 4]) -> [u8; 4] {
-    [rgba[2], rgba[1], rgba[0], rgba[3]]
-}
+pub const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
+pub const COLOR_ACTIVE: Color = Color::rgb(255, 255, 255);
+pub const COLOR_INACTIVE: Color = Color::rgb(100, 100, 100);
+pub const COLOR_URGENT: Color = Color::rgb(220, 50, 50);
+pub const COLOR_WORKSPACE_ACTIVE_BG: Color = Color::rgb(0x28, 0x55, 0x77);
+pub const COLOR_WORKSPACE_ACTIVE_BR: Color = Color::rgb(0x4c, 0x78, 0x99);
 
 #[derive(Clone, Copy)]
 pub struct Region {
@@ -43,8 +39,8 @@ impl<'a> Map<'a> {
         }
     }
 
-    pub fn clear(&mut self, color: [u8; 4]) {
-        let bgra = to_bgra(color);
+    pub fn clear(&mut self, color: Color) {
+        let bgra = color.bgra();
         let (chunks, _) = self.data.as_chunks_mut::<4>();
         chunks.fill(bgra);
     }
@@ -63,14 +59,14 @@ impl Renderer {
         }
     }
 
-    pub fn fill_rect(&self, map: &mut Map<'_>, region: Region, color: [u8; 4]) {
+    pub fn fill_rect(&self, map: &mut Map<'_>, region: Region, color: Color) {
         let y = region.y as usize..(region.y + region.h as i32) as usize;
         let x = region.x as usize..(region.x + region.w as i32) as usize;
         if y.is_empty() || x.is_empty() {
             return;
         }
 
-        let bgra = to_bgra(color);
+        let bgra = color.bgra();
         let stride = map.width as usize;
         let (chunks, _) = map.data.as_chunks_mut::<4>();
         for row in y {
@@ -83,8 +79,8 @@ impl Renderer {
         map: &mut Map<'_>,
         region: Region,
         text: &str,
-        ft_color: [u8; 4],
-        bg_color: [u8; 4],
+        ft_color: Color,
+        bg_color: Color,
         ft_size: u32,
     ) {
         let chars: Vec<char> = text.chars().collect();
@@ -212,8 +208,8 @@ mod tests {
 
     const SIZE: u32 = 28;
     const FT_SIZE: u32 = 13;
-    const FG: [u8; 4] = [255, 255, 255, 255];
-    const BG: [u8; 4] = [0, 0, 0, 255];
+    const FG: Color = Color::rgb(255, 255, 255);
+    const BG: Color = Color::rgb(0, 0, 0);
 
     fn make_renderer() -> Renderer {
         let (font, size) = font::load("Sans Bold");

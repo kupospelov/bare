@@ -2,6 +2,7 @@ pub mod battery;
 pub mod time;
 pub mod workspaces;
 
+use crate::color::Color;
 use crate::config::Config;
 
 pub fn inner_margin(font_size: u32) -> i32 {
@@ -20,7 +21,7 @@ pub trait Block {
         map: &mut crate::render::Map<'_>,
         y: i32,
         font_size: u32,
-        bg_color: [u8; 4],
+        bg_color: Color,
     );
 
     /// Update internal state. Returns true if the display needs to be redrawn.

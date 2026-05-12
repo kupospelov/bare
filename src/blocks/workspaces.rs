@@ -1,4 +1,5 @@
 use super::Block;
+use crate::color::Color;
 use crate::config::WorkspaceConfig;
 use crate::render::{
     self, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_URGENT, COLOR_WORKSPACE_ACTIVE_BG,
@@ -48,7 +49,7 @@ impl Block for Workspaces {
         map: &mut render::Map<'_>,
         y: i32,
         font_size: u32,
-        bg_color: [u8; 4],
+        bg_color: Color,
     ) {
         let mut y = y;
         self.y_start = y;
@@ -118,7 +119,7 @@ fn render_border(
     map: &mut render::Map<'_>,
     outer: render::Region,
     borders: [i32; 4],
-    color: [u8; 4],
+    color: Color,
 ) {
     // top
     if borders[0] > 0 {

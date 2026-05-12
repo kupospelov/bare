@@ -1,4 +1,5 @@
 mod blocks;
+mod color;
 mod config;
 mod font;
 mod log;

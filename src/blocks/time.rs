@@ -1,4 +1,5 @@
 use super::Block;
+use crate::color::Color;
 use crate::render;
 use crate::{debug, error};
 
@@ -44,7 +45,7 @@ impl Block for Time {
         map: &mut render::Map<'_>,
         y: i32,
         font_size: u32,
-        bg_color: [u8; 4],
+        bg_color: Color,
     ) {
         let margin = super::inner_margin(font_size);
         renderer.render_text(
