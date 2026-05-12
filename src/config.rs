@@ -25,16 +25,15 @@ impl Default for BarConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "shadow::WorkspaceConfig")]
 pub struct WorkspaceConfig {
     pub active: WorkspaceStateConfig,
     pub inactive: WorkspaceStateConfig,
     pub urgent: WorkspaceStateConfig,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceStateConfig {
     pub gaps: [i32; 4],
     pub borders: [i32; 4],
@@ -46,6 +45,25 @@ impl WorkspaceConfig {
             active: self.active.scaled(scale),
             inactive: self.inactive.scaled(scale),
             urgent: self.urgent.scaled(scale),
+        }
+    }
+}
+
+impl Default for WorkspaceConfig {
+    fn default() -> Self {
+        Self {
+            active: WorkspaceStateConfig {
+                gaps: [0, 0, 0, 0],
+                borders: [0, 0, 0, 0],
+            },
+            inactive: WorkspaceStateConfig {
+                gaps: [0, 0, 0, 0],
+                borders: [0, 0, 0, 0],
+            },
+            urgent: WorkspaceStateConfig {
+                gaps: [0, 0, 0, 0],
+                borders: [0, 0, 0, 0],
+            },
         }
     }
 }
@@ -84,4 +102,82 @@ fn config_path() -> PathBuf {
             PathBuf::from(home).join(".config")
         });
     base.join("bare").join("config.toml")
+}
+
+mod shadow {
+    use serde::Deserialize;
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct WorkspaceConfig {
+        pub active: WorkspaceStateConfig,
+        pub inactive: WorkspaceStateConfig,
+        pub urgent: WorkspaceStateConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct WorkspaceStateConfig {
+        pub gaps: Option<[i32; 4]>,
+        pub borders: Option<[i32; 4]>,
+    }
+
+    impl WorkspaceStateConfig {
+        pub(super) fn resolve(
+            self,
+            default: &super::WorkspaceStateConfig,
+        ) -> super::WorkspaceStateConfig {
+            super::WorkspaceStateConfig {
+                gaps: self.gaps.unwrap_or(default.gaps),
+                borders: self.borders.unwrap_or(default.borders),
+            }
+        }
+    }
+}
+
+impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
+    fn from(shadow: shadow::WorkspaceConfig) -> Self {
+        let d = WorkspaceConfig::default();
+        Self {
+            active: shadow.active.resolve(&d.active),
+            inactive: shadow.inactive.resolve(&d.inactive),
+            urgent: shadow.urgent.resolve(&d.urgent),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_workspace_config(toml_str: &str) -> WorkspaceConfig {
+        toml::from_str(toml_str).unwrap()
+    }
+
+    #[test]
+    fn workspace_defaults() {
+        let actual = parse_workspace_config("");
+
+        assert_eq!(actual, WorkspaceConfig::default());
+        assert_eq!(actual.active.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.active.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.inactive.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.inactive.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.urgent.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.urgent.borders, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn workspace_partial_override() {
+        let actual = parse_workspace_config(
+            r#"
+            [active]
+            gaps = [10, 20, 30, 40]
+            "#,
+        );
+        let mut expected = WorkspaceConfig::default();
+        expected.active.gaps = [10, 20, 30, 40];
+
+        assert_eq!(actual, expected);
+    }
 }
