@@ -1,10 +1,7 @@
 use super::Block;
 use crate::color::Color;
 use crate::config::WorkspaceConfig;
-use crate::render::{
-    self, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_URGENT, COLOR_WORKSPACE_ACTIVE_BG,
-    COLOR_WORKSPACE_ACTIVE_BR, Renderer,
-};
+use crate::render::{self, Renderer};
 use crate::state::Workspace;
 use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
 
@@ -55,19 +52,6 @@ impl Block for Workspaces {
         self.y_start = y;
 
         for ws in &self.items {
-            let text_color = if ws.active {
-                COLOR_ACTIVE
-            } else if ws.urgent {
-                COLOR_URGENT
-            } else {
-                COLOR_INACTIVE
-            };
-            let ws_bg_color = if ws.active {
-                COLOR_WORKSPACE_ACTIVE_BG
-            } else {
-                bg_color
-            };
-
             let state = if ws.active {
                 &self.config.active
             } else if ws.urgent {
@@ -88,20 +72,21 @@ impl Block for Workspaces {
                 h: (outer.h as i32 - state.borders[0] - state.borders[2]).max(0) as u32,
             };
             if outer.w > 0 && outer.h > 0 {
-                render_border(
-                    renderer,
-                    map,
-                    outer,
-                    state.borders,
-                    COLOR_WORKSPACE_ACTIVE_BR,
-                );
+                render_border(renderer, map, outer, state.borders, state.color.border);
             }
 
             if inner.w > 0 && inner.h > 0 {
-                if ws_bg_color != bg_color {
-                    renderer.fill_rect(map, inner, ws_bg_color);
+                if state.color.background != bg_color {
+                    renderer.fill_rect(map, inner, state.color.background);
                 }
-                renderer.render_text(map, inner, &ws.name, text_color, ws_bg_color, font_size);
+                renderer.render_text(
+                    map,
+                    inner,
+                    &ws.name,
+                    state.color.text,
+                    state.color.background,
+                    font_size,
+                );
             }
 
             y += self.height;

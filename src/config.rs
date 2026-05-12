@@ -1,3 +1,4 @@
+use crate::color::Color;
 use crate::debug;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -37,6 +38,14 @@ pub struct WorkspaceConfig {
 pub struct WorkspaceStateConfig {
     pub gaps: [i32; 4],
     pub borders: [i32; 4],
+    pub color: WorkspaceColorConfig,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceColorConfig {
+    pub text: Color,
+    pub background: Color,
+    pub border: Color,
 }
 
 impl WorkspaceConfig {
@@ -55,14 +64,29 @@ impl Default for WorkspaceConfig {
             active: WorkspaceStateConfig {
                 gaps: [0, 0, 0, 0],
                 borders: [0, 0, 0, 0],
+                color: WorkspaceColorConfig {
+                    text: Color::rgb(0xff, 0xff, 0xff),
+                    background: Color::rgb(0x28, 0x55, 0x77),
+                    border: Color::rgb(0x4c, 0x78, 0x99),
+                },
             },
             inactive: WorkspaceStateConfig {
                 gaps: [0, 0, 0, 0],
                 borders: [0, 0, 0, 0],
+                color: WorkspaceColorConfig {
+                    text: Color::rgb(0x88, 0x88, 0x88),
+                    background: Color::rgb(0x22, 0x22, 0x22),
+                    border: Color::rgb(0x33, 0x33, 0x33),
+                },
             },
             urgent: WorkspaceStateConfig {
                 gaps: [0, 0, 0, 0],
                 borders: [0, 0, 0, 0],
+                color: WorkspaceColorConfig {
+                    text: Color::rgb(0xff, 0xff, 0xff),
+                    background: Color::rgb(0x90, 0, 0),
+                    border: Color::rgb(0x2f, 0x34, 0x3a),
+                },
             },
         }
     }
@@ -73,6 +97,7 @@ impl WorkspaceStateConfig {
         Self {
             gaps: self.gaps.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
+            color: self.color.clone(),
         }
     }
 }
@@ -105,6 +130,7 @@ fn config_path() -> PathBuf {
 }
 
 mod shadow {
+    use crate::color::Color;
     use serde::Deserialize;
 
     #[derive(Default, Deserialize)]
@@ -120,6 +146,15 @@ mod shadow {
     pub(super) struct WorkspaceStateConfig {
         pub gaps: Option<[i32; 4]>,
         pub borders: Option<[i32; 4]>,
+        pub color: WorkspaceColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct WorkspaceColorConfig {
+        pub text: Option<Color>,
+        pub background: Option<Color>,
+        pub border: Option<Color>,
     }
 
     impl WorkspaceStateConfig {
@@ -130,6 +165,20 @@ mod shadow {
             super::WorkspaceStateConfig {
                 gaps: self.gaps.unwrap_or(default.gaps),
                 borders: self.borders.unwrap_or(default.borders),
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
+    impl WorkspaceColorConfig {
+        pub(super) fn resolve(
+            self,
+            default: &super::WorkspaceColorConfig,
+        ) -> super::WorkspaceColorConfig {
+            super::WorkspaceColorConfig {
+                text: self.text.unwrap_or(default.text),
+                background: self.background.unwrap_or(default.background),
+                border: self.border.unwrap_or(default.border),
             }
         }
     }
@@ -161,22 +210,38 @@ mod tests {
         assert_eq!(actual, WorkspaceConfig::default());
         assert_eq!(actual.active.gaps, [0, 0, 0, 0]);
         assert_eq!(actual.active.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.active.color.text, Color::rgb(0xff, 0xff, 0xff));
+        assert_eq!(actual.active.color.background, Color::rgb(0x28, 0x55, 0x77));
+        assert_eq!(actual.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
         assert_eq!(actual.inactive.gaps, [0, 0, 0, 0]);
         assert_eq!(actual.inactive.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
+        assert_eq!(
+            actual.inactive.color.background,
+            Color::rgb(0x22, 0x22, 0x22)
+        );
+        assert_eq!(actual.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
         assert_eq!(actual.urgent.gaps, [0, 0, 0, 0]);
         assert_eq!(actual.urgent.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.urgent.color.text, Color::rgb(0xff, 0xff, 0xff));
+        assert_eq!(actual.urgent.color.background, Color::rgb(0x90, 0, 0));
+        assert_eq!(actual.urgent.color.border, Color::rgb(0x2f, 0x34, 0x3a));
     }
 
     #[test]
     fn workspace_partial_override() {
         let actual = parse_workspace_config(
-            r#"
+            r###"
             [active]
             gaps = [10, 20, 30, 40]
-            "#,
+            
+            [inactive.color]
+            background = "#112233"
+            "###,
         );
         let mut expected = WorkspaceConfig::default();
         expected.active.gaps = [10, 20, 30, 40];
+        expected.inactive.color.background = Color::rgb(0x11, 0x22, 0x33);
 
         assert_eq!(actual, expected);
     }

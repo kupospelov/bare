@@ -9,11 +9,7 @@ use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 
 pub const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
-pub const COLOR_ACTIVE: Color = Color::rgb(255, 255, 255);
 pub const COLOR_INACTIVE: Color = Color::rgb(100, 100, 100);
-pub const COLOR_URGENT: Color = Color::rgb(220, 50, 50);
-pub const COLOR_WORKSPACE_ACTIVE_BG: Color = Color::rgb(0x28, 0x55, 0x77);
-pub const COLOR_WORKSPACE_ACTIVE_BR: Color = Color::rgb(0x4c, 0x78, 0x99);
 
 #[derive(Clone, Copy)]
 pub struct Region {
