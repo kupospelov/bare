@@ -35,7 +35,7 @@ fn main() {
     WaylandSource::new(conn.clone(), event_queue)
         .insert(handle.clone())
         .expect("Failed to insert Wayland source");
-    state.register_timers(&handle);
+    state.register_event_sources(&handle);
     event_loop
         .run(None, &mut state, |state| state.callback(&conn))
         .expect("Failed to run event loop");

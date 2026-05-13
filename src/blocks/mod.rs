@@ -1,12 +1,22 @@
 pub mod battery;
 pub mod time;
+pub mod volume;
 pub mod workspaces;
 
 use crate::color::Color;
 use crate::config::Config;
+use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
 pub fn inner_margin(font_size: u32) -> i32 {
     font_size as i32 / 5
+}
+
+pub struct Fd(pub RawFd);
+
+impl AsFd for Fd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        unsafe { BorrowedFd::borrow_raw(self.0) }
+    }
 }
 
 pub trait Block {
@@ -33,6 +43,16 @@ pub trait Block {
     /// fire. Return `Drop` if this block never needs timer-driven updates.
     fn reschedule(&self) -> calloop::timer::TimeoutAction {
         calloop::timer::TimeoutAction::Drop
+    }
+
+    /// Calloop event source to register, if this block is fd-driven.
+    fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
+        None
+    }
+
+    /// Drain pending events from the fd. Returns true if a redraw is needed.
+    fn on_fd(&mut self) -> bool {
+        false
     }
 
     /// React to an output scale change.

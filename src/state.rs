@@ -68,10 +68,14 @@ impl State {
             workspace_handles: HashMap::new(),
             workspace_manager: None,
             renderer: Renderer::new(raster::Rasterizer::new(font), font_size),
-            blocks: vec![
-                Box::new(blocks::time::Time::new()),
-                Box::new(blocks::battery::Battery::new()),
-            ],
+            blocks: {
+                let mut v: Vec<Box<dyn Block>> = vec![Box::new(blocks::time::Time::new())];
+                v.push(Box::new(blocks::battery::Battery::new()));
+                if let Ok(volume) = blocks::volume::Volume::new() {
+                    v.push(Box::new(volume));
+                }
+                v
+            },
         }
     }
 
@@ -156,8 +160,19 @@ impl State {
         let _ = conn.flush();
     }
 
-    pub fn register_timers(&self, handle: &calloop::LoopHandle<'_, State>) {
+    pub fn register_event_sources(&self, handle: &calloop::LoopHandle<'_, State>) {
         for i in 0..self.blocks.len() {
+            if let Some(fd) = self.blocks[i].fd() {
+                handle
+                    .insert_source(fd, move |_readiness, _fd, state| {
+                        if state.blocks[i].on_fd() {
+                            state.mark_all_outputs_dirty();
+                        }
+                        Ok(calloop::PostAction::Continue)
+                    })
+                    .expect("Failed to insert block fd source");
+            }
+
             let timer = match self.blocks[i].reschedule() {
                 TimeoutAction::ToInstant(i) => calloop::timer::Timer::from_deadline(i),
                 TimeoutAction::ToDuration(d) => calloop::timer::Timer::from_duration(d),
