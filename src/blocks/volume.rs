@@ -1,5 +1,6 @@
 use super::{Block, Fd};
 use crate::color::Color;
+use crate::config::VolumeConfig;
 use crate::render;
 use crate::{debug, error};
 use pipewire as pw;
@@ -14,8 +15,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::fd::AsRawFd;
 use std::rc::Rc;
-
-pub const COLOR_MUTED: Color = Color::rgb(50, 50, 50);
 
 #[derive(Default, Clone, PartialEq)]
 struct SinkState {
@@ -47,6 +46,7 @@ pub struct Volume {
     _proxies: Rc<RefCell<HashMap<u32, ProxyEntry>>>,
     main_loop: pw::main_loop::MainLoopRc,
     state: Rc<RefCell<State>>,
+    config: VolumeConfig,
 }
 
 struct ProxyEntry {
@@ -55,7 +55,7 @@ struct ProxyEntry {
 }
 
 impl Volume {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(config: &VolumeConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let main_loop = pw::main_loop::MainLoopRc::new(None)?;
         let context = pw::context::ContextRc::new(&main_loop, None)?;
         let core = context.connect_rc(None)?;
@@ -71,6 +71,7 @@ impl Volume {
             _proxies: proxies,
             main_loop,
             state,
+            config: config.clone(),
         })
     }
 }
@@ -94,7 +95,7 @@ impl Block for Volume {
             None => "??".to_string(),
         };
         let ft_color = if state.mute {
-            COLOR_MUTED
+            self.config.muted.color.text
         } else {
             render::COLOR_INACTIVE
         };

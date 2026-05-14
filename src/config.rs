@@ -8,6 +8,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
+    pub volume: VolumeConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,6 +99,32 @@ impl WorkspaceStateConfig {
             gaps: self.gaps.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
             color: self.color.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct VolumeConfig {
+    pub muted: VolumeStateConfig,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct VolumeStateConfig {
+    pub color: VolumeColorConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct VolumeColorConfig {
+    pub text: Color,
+}
+
+impl Default for VolumeColorConfig {
+    fn default() -> Self {
+        Self {
+            text: Color::rgb(50, 50, 50),
         }
     }
 }

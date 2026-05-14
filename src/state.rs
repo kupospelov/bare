@@ -52,9 +52,21 @@ pub struct State {
     pub blocks: Vec<Box<dyn Block>>,
 }
 
+fn create_blocks(config: &Config) -> Vec<Box<dyn Block>> {
+    let mut blocks: Vec<Box<dyn Block>> = Vec::new();
+    blocks.push(Box::new(blocks::time::Time::new()));
+    blocks.push(Box::new(blocks::battery::Battery::new()));
+    if let Ok(volume) = blocks::volume::Volume::new(&config.volume) {
+        blocks.push(Box::new(volume));
+    }
+
+    blocks
+}
+
 impl State {
     pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
         let (font, font_size) = font::load(&config.bar.font);
+        let blocks = create_blocks(&config);
         Self {
             config,
             qh,
@@ -68,14 +80,7 @@ impl State {
             workspace_handles: HashMap::new(),
             workspace_manager: None,
             renderer: Renderer::new(raster::Rasterizer::new(font), font_size),
-            blocks: {
-                let mut v: Vec<Box<dyn Block>> = vec![Box::new(blocks::time::Time::new())];
-                v.push(Box::new(blocks::battery::Battery::new()));
-                if let Ok(volume) = blocks::volume::Volume::new() {
-                    v.push(Box::new(volume));
-                }
-                v
-            },
+            blocks,
         }
     }
 
