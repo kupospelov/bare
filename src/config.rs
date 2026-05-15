@@ -30,6 +30,7 @@ impl Default for BarConfig {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(from = "shadow::WorkspaceConfig")]
 pub struct WorkspaceConfig {
+    pub block: BlockConfig,
     pub active: WorkspaceStateConfig,
     pub inactive: WorkspaceStateConfig,
     pub urgent: WorkspaceStateConfig,
@@ -37,9 +38,23 @@ pub struct WorkspaceConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceStateConfig {
+    pub color: WorkspaceColorConfig,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct BlockConfig {
     pub gaps: [i32; 4],
     pub borders: [i32; 4],
-    pub color: WorkspaceColorConfig,
+}
+
+impl BlockConfig {
+    pub fn scaled(&self, scale: i32) -> Self {
+        Self {
+            gaps: self.gaps.map(|v| v * scale),
+            borders: self.borders.map(|v| v * scale),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,9 +67,10 @@ pub struct WorkspaceColorConfig {
 impl WorkspaceConfig {
     pub fn scaled(&self, scale: i32) -> Self {
         Self {
-            active: self.active.scaled(scale),
-            inactive: self.inactive.scaled(scale),
-            urgent: self.urgent.scaled(scale),
+            block: self.block.scaled(scale),
+            active: self.active.clone(),
+            inactive: self.inactive.clone(),
+            urgent: self.urgent.clone(),
         }
     }
 }
@@ -62,9 +78,8 @@ impl WorkspaceConfig {
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         Self {
+            block: BlockConfig::default(),
             active: WorkspaceStateConfig {
-                gaps: [0, 0, 0, 0],
-                borders: [0, 0, 0, 0],
                 color: WorkspaceColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x28, 0x55, 0x77),
@@ -72,8 +87,6 @@ impl Default for WorkspaceConfig {
                 },
             },
             inactive: WorkspaceStateConfig {
-                gaps: [0, 0, 0, 0],
-                borders: [0, 0, 0, 0],
                 color: WorkspaceColorConfig {
                     text: Color::rgb(0x88, 0x88, 0x88),
                     background: Color::rgb(0x22, 0x22, 0x22),
@@ -81,24 +94,12 @@ impl Default for WorkspaceConfig {
                 },
             },
             urgent: WorkspaceStateConfig {
-                gaps: [0, 0, 0, 0],
-                borders: [0, 0, 0, 0],
                 color: WorkspaceColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x90, 0, 0),
                     border: Color::rgb(0x2f, 0x34, 0x3a),
                 },
             },
-        }
-    }
-}
-
-impl WorkspaceStateConfig {
-    pub fn scaled(&self, scale: i32) -> Self {
-        Self {
-            gaps: self.gaps.map(|v| v * scale),
-            borders: self.borders.map(|v| v * scale),
-            color: self.color.clone(),
         }
     }
 }
@@ -163,6 +164,8 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct WorkspaceConfig {
+        #[serde(flatten)]
+        pub block: BlockConfig,
         pub active: WorkspaceStateConfig,
         pub inactive: WorkspaceStateConfig,
         pub urgent: WorkspaceStateConfig,
@@ -171,9 +174,14 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct WorkspaceStateConfig {
+        pub color: WorkspaceColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct BlockConfig {
         pub gaps: Option<[i32; 4]>,
         pub borders: Option<[i32; 4]>,
-        pub color: WorkspaceColorConfig,
     }
 
     #[derive(Default, Deserialize)]
@@ -190,9 +198,16 @@ mod shadow {
             default: &super::WorkspaceStateConfig,
         ) -> super::WorkspaceStateConfig {
             super::WorkspaceStateConfig {
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
+    impl BlockConfig {
+        pub(super) fn resolve(self, default: &super::BlockConfig) -> super::BlockConfig {
+            super::BlockConfig {
                 gaps: self.gaps.unwrap_or(default.gaps),
                 borders: self.borders.unwrap_or(default.borders),
-                color: self.color.resolve(&default.color),
             }
         }
     }
@@ -215,6 +230,7 @@ impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
     fn from(shadow: shadow::WorkspaceConfig) -> Self {
         let d = WorkspaceConfig::default();
         Self {
+            block: shadow.block.resolve(&d.block),
             active: shadow.active.resolve(&d.active),
             inactive: shadow.inactive.resolve(&d.inactive),
             urgent: shadow.urgent.resolve(&d.urgent),
@@ -235,21 +251,17 @@ mod tests {
         let actual = parse_workspace_config("");
 
         assert_eq!(actual, WorkspaceConfig::default());
-        assert_eq!(actual.active.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.active.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
         assert_eq!(actual.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(actual.active.color.background, Color::rgb(0x28, 0x55, 0x77));
         assert_eq!(actual.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
-        assert_eq!(actual.inactive.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.inactive.borders, [0, 0, 0, 0]);
         assert_eq!(actual.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(
             actual.inactive.color.background,
             Color::rgb(0x22, 0x22, 0x22)
         );
         assert_eq!(actual.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
-        assert_eq!(actual.urgent.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.urgent.borders, [0, 0, 0, 0]);
         assert_eq!(actual.urgent.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(actual.urgent.color.background, Color::rgb(0x90, 0, 0));
         assert_eq!(actual.urgent.color.border, Color::rgb(0x2f, 0x34, 0x3a));
@@ -259,15 +271,14 @@ mod tests {
     fn workspace_partial_override() {
         let actual = parse_workspace_config(
             r###"
-            [active]
             gaps = [10, 20, 30, 40]
-            
+
             [inactive.color]
             background = "#112233"
             "###,
         );
         let mut expected = WorkspaceConfig::default();
-        expected.active.gaps = [10, 20, 30, 40];
+        expected.block.gaps = [10, 20, 30, 40];
         expected.inactive.color.background = Color::rgb(0x11, 0x22, 0x33);
 
         assert_eq!(actual, expected);

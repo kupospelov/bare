@@ -48,9 +48,10 @@ impl Block for Workspaces {
         font_size: u32,
         bg_color: Color,
     ) {
+        let gaps = self.config.block.gaps;
+        let borders = self.config.block.borders;
         let mut y = y;
         self.y_start = y;
-
         for ws in &self.items {
             let state = if ws.active {
                 &self.config.active
@@ -60,19 +61,19 @@ impl Block for Workspaces {
                 &self.config.inactive
             };
             let outer = render::Region {
-                x: state.gaps[3],
-                y: y + state.gaps[0],
-                w: (map.width as i32 - state.gaps[3] - state.gaps[1]).max(0) as u32,
-                h: (self.height - state.gaps[0] - state.gaps[2]).max(0) as u32,
+                x: gaps[3],
+                y: y + gaps[0],
+                w: (map.width as i32 - gaps[3] - gaps[1]).max(0) as u32,
+                h: (self.height - gaps[0] - gaps[2]).max(0) as u32,
             };
             let inner = render::Region {
-                x: outer.x + state.borders[3],
-                y: outer.y + state.borders[0],
-                w: (outer.w as i32 - state.borders[3] - state.borders[1]).max(0) as u32,
-                h: (outer.h as i32 - state.borders[0] - state.borders[2]).max(0) as u32,
+                x: outer.x + borders[3],
+                y: outer.y + borders[0],
+                w: (outer.w as i32 - borders[3] - borders[1]).max(0) as u32,
+                h: (outer.h as i32 - borders[0] - borders[2]).max(0) as u32,
             };
             if outer.w > 0 && outer.h > 0 {
-                render_border(renderer, map, outer, state.borders, state.color.border);
+                render_border(renderer, map, outer, borders, state.color.border);
             }
 
             if inner.w > 0 && inner.h > 0 {
