@@ -1,5 +1,5 @@
 use super::{Block, Fd};
-use crate::color::Color;
+use crate::config::BlockConfig;
 use crate::render;
 use crate::{debug, error};
 use nix::sys::socket::{
@@ -90,18 +90,23 @@ fn open_uevent_socket() -> nix::Result<OwnedFd> {
 }
 
 impl Block for Battery {
-    fn height(&self, font_size: u32) -> i32 {
-        font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32
+    fn layout(&self, font_size: u32) -> render::Layout {
+        render::Layout {
+            height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
+            config: BlockConfig::default(),
+            background: render::COLOR_BACKGROUND,
+            border: render::COLOR_BACKGROUND,
+        }
     }
 
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
         map: &mut render::Map<'_>,
-        y: i32,
+        region: render::Region,
         font_size: u32,
-        bg_color: Color,
     ) {
+        let bg_color = render::COLOR_BACKGROUND;
         let capacity = if self.capacity.is_empty() {
             "??"
         } else {
@@ -113,9 +118,9 @@ impl Block for Battery {
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y,
-                w: map.width,
+                x: region.x,
+                y: region.y,
+                w: region.w,
                 h: label_size,
             },
             "BAT",
@@ -126,9 +131,9 @@ impl Block for Battery {
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y: y + label_size as i32 + margin,
-                w: map.width,
+                x: region.x,
+                y: region.y + label_size as i32 + margin,
+                w: region.w,
                 h: font_size,
             },
             capacity,

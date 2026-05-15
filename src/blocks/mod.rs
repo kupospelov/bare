@@ -3,7 +3,6 @@ pub mod time;
 pub mod volume;
 pub mod workspaces;
 
-use crate::color::Color;
 use crate::config::Config;
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
@@ -20,18 +19,16 @@ impl AsFd for Fd {
 }
 
 pub trait Block {
-    /// Physical pixel height of this block. Called by the renderer for layout before rendering.
-    fn height(&self, font_size: u32) -> i32;
+    /// The block layout.
+    fn layout(&self, font_size: u32) -> crate::render::Layout;
 
-    /// Render into `mapping`. `y` is the physical-pixel bottom anchor (lower y = higher on
-    /// screen).
+    /// Render into the region of `mapping`.
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
         map: &mut crate::render::Map<'_>,
-        y: i32,
+        region: crate::render::Region,
         font_size: u32,
-        bg_color: Color,
     );
 
     /// Update internal state. Returns true if the display needs to be redrawn.

@@ -1,5 +1,5 @@
 use super::Block;
-use crate::color::Color;
+use crate::config::BlockConfig;
 use crate::render;
 use crate::{debug, error};
 
@@ -35,25 +35,30 @@ impl Time {
 }
 
 impl Block for Time {
-    fn height(&self, font_size: u32) -> i32 {
-        font_size as i32 * 2 + super::inner_margin(font_size)
+    fn layout(&self, font_size: u32) -> render::Layout {
+        render::Layout {
+            height: font_size as i32 * 2 + super::inner_margin(font_size),
+            config: BlockConfig::default(),
+            background: render::COLOR_BACKGROUND,
+            border: render::COLOR_BACKGROUND,
+        }
     }
 
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
         map: &mut render::Map<'_>,
-        y: i32,
+        region: render::Region,
         font_size: u32,
-        bg_color: Color,
     ) {
+        let bg_color = render::COLOR_BACKGROUND;
         let margin = super::inner_margin(font_size);
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y,
-                w: map.width,
+                x: region.x,
+                y: region.y,
+                w: region.w,
                 h: font_size,
             },
             &self.hours,
@@ -64,9 +69,9 @@ impl Block for Time {
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y: y + font_size as i32 + margin,
-                w: map.width,
+                x: region.x,
+                y: region.y + font_size as i32 + margin,
+                w: region.w,
                 h: font_size,
             },
             &self.minutes,

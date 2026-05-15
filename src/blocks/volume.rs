@@ -1,6 +1,5 @@
 use super::{Block, Fd};
-use crate::color::Color;
-use crate::config::VolumeConfig;
+use crate::config::{BlockConfig, VolumeConfig};
 use crate::render;
 use crate::{debug, error};
 use pipewire as pw;
@@ -77,23 +76,28 @@ impl Volume {
 }
 
 impl Block for Volume {
-    fn height(&self, font_size: u32) -> i32 {
-        font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32
+    fn layout(&self, font_size: u32) -> render::Layout {
+        render::Layout {
+            height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
+            config: BlockConfig::default(),
+            background: render::COLOR_BACKGROUND,
+            border: render::COLOR_BACKGROUND,
+        }
     }
 
     fn render(
         &mut self,
         renderer: &mut crate::render::Renderer,
         map: &mut render::Map<'_>,
-        y: i32,
+        region: render::Region,
         font_size: u32,
-        bg_color: Color,
     ) {
         let state = self.state.borrow().current();
         let value = match state.percent {
             Some(p) => format!("{}", p),
             None => "??".to_string(),
         };
+        let bg_color = render::COLOR_BACKGROUND;
         let ft_color = if state.mute {
             self.config.muted.color.text
         } else {
@@ -105,9 +109,9 @@ impl Block for Volume {
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y,
-                w: map.width,
+                x: region.x,
+                y: region.y,
+                w: region.w,
                 h: label_size,
             },
             "VOL",
@@ -118,9 +122,9 @@ impl Block for Volume {
         renderer.render_text(
             map,
             render::Region {
-                x: 0,
-                y: y + label_size as i32 + margin,
-                w: map.width,
+                x: region.x,
+                y: region.y + label_size as i32 + margin,
+                w: region.w,
                 h: font_size,
             },
             &value,

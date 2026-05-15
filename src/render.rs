@@ -1,5 +1,6 @@
 use crate::blocks::Block;
 use crate::color::Color;
+use crate::config::BlockConfig;
 use crate::raster::Rasterizer;
 use crate::wayland::buffer::Buffer;
 use crate::wayland::output::Output;
@@ -17,6 +18,13 @@ pub struct Region {
     pub y: i32,
     pub w: u32,
     pub h: u32,
+}
+
+pub struct Layout {
+    pub height: i32,
+    pub config: BlockConfig,
+    pub background: Color,
+    pub border: Color,
 }
 
 pub struct Map<'a> {
@@ -67,6 +75,87 @@ impl Renderer {
         let (chunks, _) = map.data.as_chunks_mut::<4>();
         for row in y {
             chunks[row * stride + x.start..row * stride + x.end].fill(bgra);
+        }
+    }
+
+    pub fn draw_block(
+        &self,
+        map: &mut Map<'_>,
+        region: Region,
+        config: &BlockConfig,
+        background: Color,
+        border: Color,
+    ) -> Region {
+        let outer = Region {
+            x: region.x + config.gaps[3],
+            y: region.y + config.gaps[0],
+            w: (region.w as i32 - config.gaps[3] - config.gaps[1]).max(0) as u32,
+            h: (region.h as i32 - config.gaps[0] - config.gaps[2]).max(0) as u32,
+        };
+        let inner = Region {
+            x: outer.x + config.borders[3],
+            y: outer.y + config.borders[0],
+            w: (outer.w as i32 - config.borders[3] - config.borders[1]).max(0) as u32,
+            h: (outer.h as i32 - config.borders[0] - config.borders[2]).max(0) as u32,
+        };
+        if outer.w > 0 && outer.h > 0 {
+            self.draw_borders(map, outer, config.borders, border);
+        }
+        if inner.w > 0 && inner.h > 0 {
+            // TODO: Skip if the bar background has the same color.
+            self.fill_rect(map, inner, background);
+        }
+        inner
+    }
+
+    fn draw_borders(&self, map: &mut Map<'_>, region: Region, borders: [i32; 4], color: Color) {
+        if borders[0] > 0 {
+            self.fill_rect(
+                map,
+                Region {
+                    x: region.x,
+                    y: region.y,
+                    w: region.w,
+                    h: borders[0] as u32,
+                },
+                color,
+            );
+        }
+        if borders[1] > 0 {
+            self.fill_rect(
+                map,
+                Region {
+                    x: region.x + region.w as i32 - borders[1],
+                    y: region.y,
+                    w: borders[1] as u32,
+                    h: region.h,
+                },
+                color,
+            );
+        }
+        if borders[2] > 0 {
+            self.fill_rect(
+                map,
+                Region {
+                    x: region.x,
+                    y: region.y + region.h as i32 - borders[2],
+                    w: region.w,
+                    h: borders[2] as u32,
+                },
+                color,
+            );
+        }
+        if borders[3] > 0 {
+            self.fill_rect(
+                map,
+                Region {
+                    x: region.x,
+                    y: region.y,
+                    w: borders[3] as u32,
+                    h: region.h,
+                },
+                color,
+            );
         }
     }
 
@@ -170,15 +259,42 @@ impl Renderer {
         map.clear(bg_color);
 
         let font_size = self.font_size * scale as u32;
+        let layout = output.workspace_group.layout(font_size);
+        let inner = self.draw_block(
+            &mut map,
+            Region {
+                x: 0,
+                y: 0,
+                w: physical_width,
+                h: layout.height.max(0) as u32,
+            },
+            &layout.config,
+            layout.background,
+            layout.border,
+        );
         output
             .workspace_group
-            .render(self, &mut map, 0, font_size, bg_color);
+            .render(self, &mut map, inner, font_size);
 
         let mut y = physical_height as i32;
         let block_margin = font_size;
         for block in blocks.iter_mut() {
-            y -= block.height(font_size);
-            block.render(self, &mut map, y, font_size, bg_color);
+            // TODO: Compute layouts once.
+            let layout = block.layout(font_size);
+            y -= layout.height;
+            let inner = self.draw_block(
+                &mut map,
+                Region {
+                    x: 0,
+                    y,
+                    w: physical_width,
+                    h: layout.height.max(0) as u32,
+                },
+                &layout.config,
+                layout.background,
+                layout.border,
+            );
+            block.render(self, &mut map, inner, font_size);
             y -= block_margin as i32;
         }
 
@@ -284,5 +400,44 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn draw_block_applies_gaps_and_borders() {
+        let r = make_renderer();
+        let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
+        let mut map = Map::new(&mut buf, SIZE);
+        let outer = Region {
+            x: 0,
+            y: 0,
+            w: SIZE,
+            h: SIZE,
+        };
+        let config = BlockConfig {
+            gaps: [1, 2, 3, 4],
+            borders: [5, 6, 7, 8],
+        };
+        let inner = r.draw_block(&mut map, outer, &config, BG, FG);
+        assert_eq!(inner.x, 4 + 8);
+        assert_eq!(inner.y, 1 + 5);
+        assert_eq!(inner.w, SIZE - 2 - 4 - 6 - 8);
+        assert_eq!(inner.h, SIZE - 1 - 3 - 5 - 7);
+    }
+
+    #[test]
+    fn draw_block_zero_sized_outer_is_noop() {
+        let r = make_renderer();
+        let mut buf = vec![0u8; 4];
+        let mut map = Map::new(&mut buf, 1);
+        let outer = Region {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        };
+        let inner = r.draw_block(&mut map, outer, &BlockConfig::default(), BG, FG);
+        assert_eq!(inner.w, 0);
+        assert_eq!(inner.h, 0);
+        assert_eq!(buf, vec![0u8; 4]);
     }
 }
