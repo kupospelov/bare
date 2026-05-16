@@ -20,6 +20,9 @@ use wayland_client::{
 use wayland_protocols::ext::workspace::v1::client::{
     ext_workspace_group_handle_v1, ext_workspace_handle_v1, ext_workspace_manager_v1,
 };
+use wayland_protocols::wp::cursor_shape::v1::client::{
+    wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 #[derive(Clone)]
@@ -45,6 +48,7 @@ pub struct State {
     pub outputs: HashMap<ObjectId, Output>, // output id -> Output
     pub groups: HashMap<ObjectId, Group>,   // group id -> Group
     pub seat: Option<wl_seat::WlSeat>,
+    pub cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     pub pointer: Option<Pointer>,
     pub workspace_manager: Option<ext_workspace_manager_v1::ExtWorkspaceManagerV1>,
     pub workspace_handles: HashMap<ObjectId, Workspace>,
@@ -76,6 +80,7 @@ impl State {
             outputs: HashMap::new(),
             groups: HashMap::new(),
             seat: None,
+            cursor_shape_manager: None,
             pointer: None,
             workspace_handles: HashMap::new(),
             workspace_manager: None,
@@ -241,6 +246,16 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                 "wl_seat" => {
                     state.seat = Some(registry.bind::<wl_seat::WlSeat, _, _>(name, 3, qh, ()));
                 }
+                "wp_cursor_shape_manager_v1" => {
+                    state.cursor_shape_manager = Some(
+                        registry.bind::<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1, _, _>(
+                            name,
+                            1,
+                            qh,
+                            (),
+                        ),
+                    );
+                }
                 _ => {}
             },
             wl_registry::Event::GlobalRemove { name } => {
@@ -268,8 +283,16 @@ impl Dispatch<wl_seat::WlSeat, ()> for State {
             let has_pointer = caps.contains(wl_seat::Capability::Pointer);
             match (has_pointer, state.pointer.as_ref()) {
                 (true, None) => {
+                    let handle = seat.get_pointer(qh, ());
+                    let cursor_shape_device = if let Some(m) = state.cursor_shape_manager.as_ref() {
+                        Some(m.get_pointer(&handle, qh, ()))
+                    } else {
+                        debug!("No cursor shape manager");
+                        None
+                    };
                     state.pointer = Some(Pointer {
-                        handle: seat.get_pointer(qh, ()),
+                        handle,
+                        cursor_shape_device,
                         y: 0,
                         surface: None,
                     });
@@ -293,13 +316,18 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            // TODO: Handle cursor shape.
             wl_pointer::Event::Enter {
-                surface, surface_y, ..
+                serial,
+                surface,
+                surface_y,
+                ..
             } => {
                 if let Some(p) = state.pointer.as_mut() {
                     p.surface = Some(surface.id());
                     p.y = surface_y as i32;
+                    if let Some(d) = p.cursor_shape_device.as_ref() {
+                        d.set_shape(serial, wp_cursor_shape_device_v1::Shape::Default);
+                    }
                 }
             }
             wl_pointer::Event::Leave { .. } => {
@@ -407,7 +435,9 @@ impl_empty_dispatch!(
     wl_shm::WlShm,
     wl_surface::WlSurface,
     zwlr_layer_shell_v1::ZwlrLayerShellV1,
-    wayland_client::protocol::wl_shm_pool::WlShmPool
+    wayland_client::protocol::wl_shm_pool::WlShmPool,
+    wp_cursor_shape_manager_v1::WpCursorShapeManagerV1,
+    wp_cursor_shape_device_v1::WpCursorShapeDeviceV1
 );
 
 impl Dispatch<wl_buffer::WlBuffer, (ObjectId, usize)> for State {
