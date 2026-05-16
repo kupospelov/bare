@@ -3,7 +3,7 @@ pub mod time;
 pub mod volume;
 pub mod workspaces;
 
-use crate::config::{ColorConfig, Config};
+use crate::config::{BatteryConfig, ColorConfig, Config, TimeConfig, VolumeConfig};
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
 pub fn inner_margin(font_size: u32) -> i32 {
@@ -21,15 +21,27 @@ pub fn new(config: &Config) -> Vec<Box<dyn Block>> {
         });
         match kind {
             "time" => {
-                let cfg = config.time.get(name).cloned().unwrap_or_default();
+                let cfg = config
+                    .time
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
                 blocks.push(Box::new(time::Time::new(&cfg)));
             }
             "battery" => {
-                let cfg = config.battery.get(name).cloned().unwrap_or_default();
+                let cfg = config
+                    .battery
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
                 blocks.push(Box::new(battery::Battery::new(&cfg)));
             }
             "volume" => {
-                let cfg = config.volume.get(name).cloned().unwrap_or_default();
+                let cfg = config
+                    .volume
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
                 let volume = volume::Volume::new(&cfg)
                     .unwrap_or_else(|e| panic!("Failed to construct volume.{}: {}", name, e));
                 blocks.push(Box::new(volume));

@@ -84,7 +84,11 @@ impl Block for Volume {
     }
 
     fn colors(&self) -> &ColorConfig {
-        &self.config.color
+        if self.state.borrow().current().mute {
+            &self.config.muted.color
+        } else {
+            &self.config.color
+        }
     }
 
     fn render(

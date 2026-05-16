@@ -4,12 +4,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
-const COLOR_TEXT: Color = Color::rgb(100, 100, 100);
-const COLOR_DIMMED: Color = Color::rgb(50, 50, 50);
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize)]
+#[serde(from = "shadow::Config")]
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
@@ -19,11 +15,12 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(from = "shadow::BarConfig")]
 pub struct BarConfig {
     pub font: String,
     pub width: u32,
     pub blocks: Vec<String>,
+    pub color: ColorConfig,
 }
 
 impl Default for BarConfig {
@@ -36,6 +33,11 @@ impl Default for BarConfig {
                 "battery.default".into(),
                 "time.default".into(),
             ],
+            color: ColorConfig {
+                text: Color::rgb(0x64, 0x64, 0x64),
+                background: Color::rgb(0x0, 0x0, 0x0),
+                border: Color::rgb(0x0, 0x0, 0x0),
+            },
         }
     }
 }
@@ -118,8 +120,7 @@ impl Default for WorkspaceConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(from = "shadow::VolumeConfig")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VolumeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
@@ -131,63 +132,54 @@ pub struct VolumeStateConfig {
     pub color: ColorConfig,
 }
 
-impl Default for VolumeConfig {
-    fn default() -> Self {
+impl VolumeConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
             block: BlockConfig::default(),
-            color: ColorConfig {
-                text: COLOR_TEXT,
-                background: COLOR_BACKGROUND,
-                border: COLOR_BACKGROUND,
-            },
+            color: color.clone(),
             muted: VolumeStateConfig {
                 color: ColorConfig {
-                    text: COLOR_DIMMED,
-                    background: COLOR_BACKGROUND,
-                    border: COLOR_BACKGROUND,
+                    text: Color::rgb(0x32, 0x32, 0x32),
+                    ..*color
                 },
             },
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(from = "shadow::BatteryConfig")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BatteryConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
 }
 
-impl Default for BatteryConfig {
-    fn default() -> Self {
+impl BatteryConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
             block: BlockConfig::default(),
-            color: ColorConfig {
-                text: COLOR_TEXT,
-                background: COLOR_BACKGROUND,
-                border: COLOR_BACKGROUND,
-            },
+            color: color.clone(),
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(from = "shadow::TimeConfig")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
 }
 
-impl Default for TimeConfig {
-    fn default() -> Self {
+impl TimeConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
             block: BlockConfig::default(),
-            color: ColorConfig {
-                text: COLOR_TEXT,
-                background: COLOR_BACKGROUND,
-                border: COLOR_BACKGROUND,
-            },
+            color: color.clone(),
         }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::from(shadow::Config::default())
     }
 }
 
@@ -221,6 +213,26 @@ fn config_path() -> PathBuf {
 mod shadow {
     use crate::color::Color;
     use serde::Deserialize;
+    use std::collections::HashMap;
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct Config {
+        pub bar: BarConfig,
+        pub workspace: WorkspaceConfig,
+        pub volume: HashMap<String, VolumeConfig>,
+        pub battery: HashMap<String, BatteryConfig>,
+        pub time: HashMap<String, TimeConfig>,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct BarConfig {
+        pub font: Option<String>,
+        pub width: Option<u32>,
+        pub blocks: Option<Vec<String>>,
+        pub color: ColorConfig,
+    }
 
     #[derive(Default, Deserialize)]
     #[serde(default)]
@@ -306,6 +318,34 @@ mod shadow {
         }
     }
 
+    impl VolumeConfig {
+        pub(super) fn resolve(self, default: &super::VolumeConfig) -> super::VolumeConfig {
+            super::VolumeConfig {
+                block: self.block.resolve(&default.block),
+                color: self.color.resolve(&default.color),
+                muted: self.muted.resolve(&default.muted),
+            }
+        }
+    }
+
+    impl BatteryConfig {
+        pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
+            super::BatteryConfig {
+                block: self.block.resolve(&default.block),
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
+    impl TimeConfig {
+        pub(super) fn resolve(self, default: &super::TimeConfig) -> super::TimeConfig {
+            super::TimeConfig {
+                block: self.block.resolve(&default.block),
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
     impl BlockConfig {
         pub(super) fn resolve(self, default: &super::BlockConfig) -> super::BlockConfig {
             super::BlockConfig {
@@ -326,6 +366,46 @@ mod shadow {
     }
 }
 
+impl From<shadow::Config> for Config {
+    fn from(shadow: shadow::Config) -> Self {
+        let bar = BarConfig::from(shadow.bar);
+        let volume = VolumeConfig::default(&bar.color);
+        let battery = BatteryConfig::default(&bar.color);
+        let time = TimeConfig::default(&bar.color);
+        Self {
+            workspace: WorkspaceConfig::from(shadow.workspace),
+            volume: shadow
+                .volume
+                .into_iter()
+                .map(|(name, config)| (name, config.resolve(&volume)))
+                .collect(),
+            battery: shadow
+                .battery
+                .into_iter()
+                .map(|(name, config)| (name, config.resolve(&battery)))
+                .collect(),
+            time: shadow
+                .time
+                .into_iter()
+                .map(|(name, config)| (name, config.resolve(&time)))
+                .collect(),
+            bar,
+        }
+    }
+}
+
+impl From<shadow::BarConfig> for BarConfig {
+    fn from(shadow: shadow::BarConfig) -> Self {
+        let d = BarConfig::default();
+        Self {
+            font: shadow.font.unwrap_or(d.font),
+            width: shadow.width.unwrap_or(d.width),
+            blocks: shadow.blocks.unwrap_or(d.blocks),
+            color: shadow.color.resolve(&d.color),
+        }
+    }
+}
+
 impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
     fn from(shadow: shadow::WorkspaceConfig) -> Self {
         let d = WorkspaceConfig::default();
@@ -338,173 +418,221 @@ impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
     }
 }
 
-impl From<shadow::VolumeConfig> for VolumeConfig {
-    fn from(shadow: shadow::VolumeConfig) -> Self {
-        let d = VolumeConfig::default();
-        Self {
-            block: shadow.block.resolve(&d.block),
-            color: shadow.color.resolve(&d.color),
-            muted: shadow.muted.resolve(&d.muted),
-        }
-    }
-}
-
-impl From<shadow::BatteryConfig> for BatteryConfig {
-    fn from(shadow: shadow::BatteryConfig) -> Self {
-        let d = BatteryConfig::default();
-        Self {
-            block: shadow.block.resolve(&d.block),
-            color: shadow.color.resolve(&d.color),
-        }
-    }
-}
-
-impl From<shadow::TimeConfig> for TimeConfig {
-    fn from(shadow: shadow::TimeConfig) -> Self {
-        let d = TimeConfig::default();
-        Self {
-            block: shadow.block.resolve(&d.block),
-            color: shadow.color.resolve(&d.color),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn parse_workspace_config(toml_str: &str) -> WorkspaceConfig {
-        toml::from_str(toml_str).unwrap()
+    #[test]
+    fn block_defaults() {
+        let config: Config = toml::from_str("").unwrap();
+
+        let b = config.bar;
+        assert_eq!(
+            b.blocks,
+            ["volume.default", "battery.default", "time.default"]
+        );
+        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+
+        let w = config.workspace;
+        assert_eq!(w.block.gaps, [0, 0, 0, 0]);
+        assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
+        assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));
+        assert_eq!(w.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
+        assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
+        assert_eq!(w.inactive.color.background, Color::rgb(0x22, 0x22, 0x22));
+        assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
+        assert_eq!(w.urgent.color.text, Color::rgb(0xff, 0xff, 0xff));
+        assert_eq!(w.urgent.color.background, Color::rgb(0x90, 0, 0));
+        assert_eq!(w.urgent.color.border, Color::rgb(0x2f, 0x34, 0x3a));
+
+        // Maps are not auto-populated.
+        assert_eq!(config.volume.len(), 0);
+        assert_eq!(config.battery.len(), 0);
+        assert_eq!(config.time.len(), 0);
     }
 
     #[test]
-    fn workspace_defaults() {
-        let actual = parse_workspace_config("");
+    fn bar_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [bar.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
 
-        assert_eq!(actual, WorkspaceConfig::default());
-        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.active.color.text, Color::rgb(0xff, 0xff, 0xff));
-        assert_eq!(actual.active.color.background, Color::rgb(0x28, 0x55, 0x77));
-        assert_eq!(actual.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
-        assert_eq!(actual.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
-        assert_eq!(
-            actual.inactive.color.background,
-            Color::rgb(0x22, 0x22, 0x22)
-        );
-        assert_eq!(actual.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
-        assert_eq!(actual.urgent.color.text, Color::rgb(0xff, 0xff, 0xff));
-        assert_eq!(actual.urgent.color.background, Color::rgb(0x90, 0, 0));
-        assert_eq!(actual.urgent.color.border, Color::rgb(0x2f, 0x34, 0x3a));
+        let b = config.bar;
+        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
     fn workspace_partial_override() {
-        let actual = parse_workspace_config(
+        let config: Config = toml::from_str(
             r###"
+            [workspace]
             gaps = [10, 20, 30, 40]
 
-            [inactive.color]
+            [workspace.inactive.color]
             background = "#112233"
             "###,
-        );
-        let mut expected = WorkspaceConfig::default();
-        expected.block.gaps = [10, 20, 30, 40];
-        expected.inactive.color.background = Color::rgb(0x11, 0x22, 0x33);
+        )
+        .unwrap();
 
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn volume_defaults() {
-        let actual: VolumeConfig = toml::from_str("").unwrap();
-
-        assert_eq!(actual, VolumeConfig::default());
-        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.muted.color.text, Color::rgb(50, 50, 50));
-        assert_eq!(actual.muted.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(actual.muted.color.border, Color::rgb(0, 0, 0));
+        let w = config.workspace;
+        assert_eq!(w.block.gaps, [10, 20, 30, 40]);
+        assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
+        assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
+        assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
     }
 
     #[test]
     fn volume_partial_override() {
-        let actual: VolumeConfig = toml::from_str(
+        let config: Config = toml::from_str(
             r###"
+            [volume.default]
             gaps = [1, 2, 3, 4]
 
-            [muted.color]
+            [volume.default.muted.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        assert_eq!(actual.block.gaps, [1, 2, 3, 4]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.muted.color.text, Color::rgb(50, 50, 50));
-        assert_eq!(actual.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(actual.muted.color.border, Color::rgb(0, 0, 0));
-    }
-
-    #[test]
-    fn battery_defaults() {
-        let actual: BatteryConfig = toml::from_str("").unwrap();
-
-        assert_eq!(actual, BatteryConfig::default());
-        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
-        assert_eq!(actual.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
+        let v = config.volume.get("default").unwrap();
+        assert_eq!(v.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(v.block.borders, [0, 0, 0, 0]);
+        assert_eq!(v.muted.color.text, Color::rgb(0x32, 0x32, 0x32));
+        assert_eq!(v.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(v.muted.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
     fn battery_partial_override() {
-        let actual: BatteryConfig = toml::from_str(
+        let config: Config = toml::from_str(
             r###"
+            [battery.default]
             gaps = [1, 2, 3, 4]
 
-            [color]
+            [battery.default.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        assert_eq!(actual.block.gaps, [1, 2, 3, 4]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
-        assert_eq!(actual.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
-    }
-
-    #[test]
-    fn time_defaults() {
-        let actual: TimeConfig = toml::from_str("").unwrap();
-
-        assert_eq!(actual, TimeConfig::default());
-        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
-        assert_eq!(actual.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
+        let b = config.battery.get("default").unwrap();
+        assert_eq!(b.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(b.block.borders, [0, 0, 0, 0]);
+        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
     fn time_partial_override() {
-        let actual: TimeConfig = toml::from_str(
+        let config: Config = toml::from_str(
             r###"
+            [time.default]
             gaps = [1, 2, 3, 4]
 
-            [color]
+            [time.default.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        assert_eq!(actual.block.gaps, [1, 2, 3, 4]);
-        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
-        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
-        assert_eq!(actual.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
+        let t = config.time.get("default").unwrap();
+        assert_eq!(t.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(t.block.borders, [0, 0, 0, 0]);
+        assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(t.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(t.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn bar_color_propagation() {
+        let config: Config = toml::from_str(
+            r###"
+            [bar.color]
+            text = "#001122"
+            background = "#334455"
+            border = "#667788"
+
+            [volume.default]
+            [battery.default]
+            [time.default]
+            "###,
+        )
+        .unwrap();
+
+        let bar_color = ColorConfig {
+            text: Color::rgb(0x00, 0x11, 0x22),
+            background: Color::rgb(0x33, 0x44, 0x55),
+            border: Color::rgb(0x66, 0x77, 0x88),
+        };
+        assert_eq!(config.volume.get("default").unwrap().color, bar_color);
+        assert_eq!(config.battery.get("default").unwrap().color, bar_color);
+        assert_eq!(config.time.get("default").unwrap().color, bar_color);
+        assert_eq!(
+            config.volume.get("default").unwrap().muted.color,
+            ColorConfig {
+                text: Color::rgb(0x32, 0x32, 0x32),
+                ..bar_color
+            }
+        );
+    }
+
+    #[test]
+    fn bar_color_propagation_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [bar.color]
+            text = "#001122"
+            background = "#334455"
+            border = "#667788"
+
+            [volume.default.color]
+            text = "#111111"
+
+            [time.default.color]
+            background = "#222222"
+
+            [battery.default.color]
+            border = "#333333"
+            "###,
+        )
+        .unwrap();
+
+        let bar_color = ColorConfig {
+            text: Color::rgb(0x00, 0x11, 0x22),
+            background: Color::rgb(0x33, 0x44, 0x55),
+            border: Color::rgb(0x66, 0x77, 0x88),
+        };
+        assert_eq!(
+            config.volume.get("default").unwrap().color,
+            ColorConfig {
+                text: Color::rgb(0x11, 0x11, 0x11),
+                ..bar_color
+            }
+        );
+        assert_eq!(
+            config.time.get("default").unwrap().color,
+            ColorConfig {
+                background: Color::rgb(0x22, 0x22, 0x22),
+                ..bar_color
+            }
+        );
+        assert_eq!(
+            config.battery.get("default").unwrap().color,
+            ColorConfig {
+                border: Color::rgb(0x33, 0x33, 0x33),
+                ..bar_color
+            }
+        );
     }
 }

@@ -59,6 +59,11 @@ impl State {
     pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
         let (font, font_size) = font::load(&config.bar.font);
         let blocks = blocks::new(&config);
+        let renderer = Renderer::new(
+            raster::Rasterizer::new(font),
+            font_size,
+            config.bar.color.background,
+        );
         Self {
             config,
             qh,
@@ -72,7 +77,7 @@ impl State {
             pointer: None,
             workspace_handles: HashMap::new(),
             workspace_manager: None,
-            renderer: Renderer::new(raster::Rasterizer::new(font), font_size),
+            renderer,
             blocks,
         }
     }

@@ -9,8 +9,6 @@ use wayland_client::QueueHandle;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 
-pub const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
-
 #[derive(Clone, Copy)]
 pub struct Region {
     pub x: i32,
@@ -58,13 +56,15 @@ impl<'a> Map<'a> {
 pub struct Renderer {
     pub rasterizer: Rasterizer,
     pub font_size: u32,
+    pub bg_color: Color,
 }
 
 impl Renderer {
-    pub fn new(rasterizer: Rasterizer, font_size: u32) -> Self {
+    pub fn new(rasterizer: Rasterizer, font_size: u32, bg_color: Color) -> Self {
         Self {
             rasterizer,
             font_size,
+            bg_color,
         }
     }
 
@@ -258,15 +258,15 @@ impl Renderer {
             return;
         }
 
-        let bg_color = COLOR_BACKGROUND;
+        let bg_color = self.bg_color;
         let start = buffer.back * frame_size;
         let mut map = Map::new(&mut buffer.mmap[start..start + frame_size], physical_height);
         map.clear(bg_color);
 
         let font_size = output.layout.font_size;
         let layout = &output.layout.workspaces;
-        let colors = output.workspace_group.colors();
-        let inner = self.draw_block(
+        output.workspace_group.render(
+            self,
             &mut map,
             Region {
                 x: 0,
@@ -274,13 +274,8 @@ impl Renderer {
                 w: physical_width,
                 h: layout.height.max(0) as u32,
             },
-            &layout.config,
-            colors.background,
-            colors.border,
+            font_size,
         );
-        output
-            .workspace_group
-            .render(self, &mut map, inner, font_size);
 
         let mut y = physical_height as i32;
         let block_margin = font_size;
@@ -331,7 +326,7 @@ mod tests {
 
     fn make_renderer() -> Renderer {
         let (font, size) = font::load("Sans Bold");
-        Renderer::new(Rasterizer::new(font), size)
+        Renderer::new(Rasterizer::new(font), size, BG)
     }
 
     fn glyph_bounds(buf: &[u8]) -> Option<(i32, i32, i32, i32)> {
