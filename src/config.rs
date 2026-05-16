@@ -14,6 +14,7 @@ pub struct Config {
     pub workspace: WorkspaceConfig,
     pub volume: VolumeConfig,
     pub battery: BatteryConfig,
+    pub time: TimeConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,6 +164,26 @@ impl Default for BatteryConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "shadow::TimeConfig")]
+pub struct TimeConfig {
+    pub block: BlockConfig,
+    pub color: ColorConfig,
+}
+
+impl Default for TimeConfig {
+    fn default() -> Self {
+        Self {
+            block: BlockConfig::default(),
+            color: ColorConfig {
+                text: COLOR_TEXT,
+                background: COLOR_BACKGROUND,
+                border: COLOR_BACKGROUND,
+            },
+        }
+    }
+}
+
 impl Config {
     pub fn load() -> Self {
         let path = config_path();
@@ -228,6 +249,14 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct BatteryConfig {
+        #[serde(flatten)]
+        pub block: BlockConfig,
+        pub color: ColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct TimeConfig {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -316,6 +345,16 @@ impl From<shadow::VolumeConfig> for VolumeConfig {
 impl From<shadow::BatteryConfig> for BatteryConfig {
     fn from(shadow: shadow::BatteryConfig) -> Self {
         let d = BatteryConfig::default();
+        Self {
+            block: shadow.block.resolve(&d.block),
+            color: shadow.color.resolve(&d.color),
+        }
+    }
+}
+
+impl From<shadow::TimeConfig> for TimeConfig {
+    fn from(shadow: shadow::TimeConfig) -> Self {
+        let d = TimeConfig::default();
         Self {
             block: shadow.block.resolve(&d.block),
             color: shadow.color.resolve(&d.color),
@@ -415,6 +454,37 @@ mod tests {
     #[test]
     fn battery_partial_override() {
         let actual: BatteryConfig = toml::from_str(
+            r###"
+            gaps = [1, 2, 3, 4]
+
+            [color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        assert_eq!(actual.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
+        assert_eq!(actual.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn time_defaults() {
+        let actual: TimeConfig = toml::from_str("").unwrap();
+
+        assert_eq!(actual, TimeConfig::default());
+        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.color.text, Color::rgb(100, 100, 100));
+        assert_eq!(actual.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(actual.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn time_partial_override() {
+        let actual: TimeConfig = toml::from_str(
             r###"
             gaps = [1, 2, 3, 4]
 

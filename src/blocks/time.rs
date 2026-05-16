@@ -1,23 +1,22 @@
 use super::Block;
-use crate::config::BlockConfig;
+use crate::config::{ColorConfig, TimeConfig};
 use crate::render;
 use crate::{debug, error};
 
 pub struct Time {
     pub hours: String,
     pub minutes: String,
-}
-
-impl Default for Time {
-    fn default() -> Self {
-        Self::new()
-    }
+    config: TimeConfig,
 }
 
 impl Time {
-    pub fn new() -> Self {
+    pub fn new(config: &TimeConfig) -> Self {
         let (hours, minutes) = Self::get_time();
-        Self { hours, minutes }
+        Self {
+            hours,
+            minutes,
+            config: config.clone(),
+        }
     }
 
     fn get_time() -> (String, String) {
@@ -38,8 +37,12 @@ impl Block for Time {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
         render::BlockLayout {
             height: font_size as i32 * 2 + super::inner_margin(font_size),
-            config: BlockConfig::default(),
+            config: self.config.block.clone(),
         }
+    }
+
+    fn colors(&self) -> &ColorConfig {
+        &self.config.color
     }
 
     fn render(
@@ -49,7 +52,7 @@ impl Block for Time {
         region: render::Region,
         font_size: u32,
     ) {
-        let bg_color = render::COLOR_BACKGROUND;
+        let color = &self.config.color;
         let margin = super::inner_margin(font_size);
         renderer.render_text(
             map,
@@ -60,8 +63,8 @@ impl Block for Time {
                 h: font_size,
             },
             &self.hours,
-            render::COLOR_INACTIVE,
-            bg_color,
+            color.text,
+            color.background,
             font_size,
         );
         renderer.render_text(
@@ -73,8 +76,8 @@ impl Block for Time {
                 h: font_size,
             },
             &self.minutes,
-            render::COLOR_INACTIVE,
-            bg_color,
+            color.text,
+            color.background,
             font_size,
         );
     }

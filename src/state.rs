@@ -54,7 +54,7 @@ pub struct State {
 
 fn create_blocks(config: &Config) -> Vec<Box<dyn Block>> {
     let mut blocks: Vec<Box<dyn Block>> = Vec::new();
-    blocks.push(Box::new(blocks::time::Time::new()));
+    blocks.push(Box::new(blocks::time::Time::new(&config.time)));
     blocks.push(Box::new(blocks::battery::Battery::new(&config.battery)));
     if let Ok(volume) = blocks::volume::Volume::new(&config.volume) {
         blocks.push(Box::new(volume));

@@ -42,6 +42,11 @@ impl Block for Workspaces {
         }
     }
 
+    fn colors(&self) -> &crate::config::ColorConfig {
+        // Ignored. Per-workspace colors are used instead.
+        &self.config.inactive.color
+    }
+
     fn render(
         &mut self,
         renderer: &mut Renderer,

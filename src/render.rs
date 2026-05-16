@@ -10,7 +10,6 @@ use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 
 pub const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
-pub const COLOR_INACTIVE: Color = Color::rgb(100, 100, 100);
 
 #[derive(Clone, Copy)]
 pub struct Region {
