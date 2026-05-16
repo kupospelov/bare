@@ -20,7 +20,7 @@ impl AsFd for Fd {
 
 pub trait Block {
     /// The block layout.
-    fn layout(&self, font_size: u32) -> crate::render::Layout;
+    fn layout(&self, font_size: u32) -> crate::render::BlockLayout;
 
     /// Render into the region of `mapping`.
     fn render(

@@ -107,17 +107,16 @@ impl State {
         layer_surface.set_exclusive_zone(self.config.bar.width as i32);
         surface.commit();
 
-        self.outputs.insert(
-            id,
-            Output::new(
-                name,
-                self.config.bar.width,
-                &self.config.workspace,
-                output,
-                surface,
-                layer_surface,
-            ),
+        let mut output = Output::new(
+            name,
+            self.config.bar.width,
+            &self.config.workspace,
+            output,
+            surface,
+            layer_surface,
         );
+        output.update_layout(&self.blocks, self.renderer.font_size);
+        self.outputs.insert(id, output);
     }
 
     fn remove_output(&mut self, name: u32) {
@@ -378,6 +377,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
 
                     o.scale = factor;
                     o.workspace_group.set_scale(&state.config, factor);
+                    o.update_layout(&state.blocks, state.renderer.font_size);
                 }
             }
             wl_output::Event::Done => {

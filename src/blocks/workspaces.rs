@@ -35,8 +35,8 @@ impl Workspaces {
 }
 
 impl Block for Workspaces {
-    fn layout(&self, _font_size: u32) -> render::Layout {
-        render::Layout {
+    fn layout(&self, _font_size: u32) -> render::BlockLayout {
+        render::BlockLayout {
             height: self.items.len() as i32 * self.height,
             config: BlockConfig::default(),
             background: render::COLOR_BACKGROUND,

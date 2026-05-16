@@ -1,6 +1,8 @@
 use crate::blocks;
+use crate::blocks::Block;
 use crate::config::WorkspaceConfig;
 use crate::debug;
+use crate::render::Layout;
 use crate::wayland::buffer::Buffer;
 use wayland_client::{
     backend::ObjectId,
@@ -19,6 +21,7 @@ pub struct Output {
     pub configured: bool,
     pub group: Option<ObjectId>,
     pub workspace_group: blocks::workspaces::Workspaces,
+    pub layout: Layout,
     pub buffer: Option<Buffer>,
     pub render: bool,
 }
@@ -43,9 +46,19 @@ impl Output {
             configured: false,
             group: None,
             workspace_group: blocks::workspaces::Workspaces::new(width as i32, workspace),
+            layout: Layout::default(),
             buffer: None,
             render: false,
         }
+    }
+
+    pub fn update_layout(&mut self, blocks: &[Box<dyn Block>], font_size: u32) {
+        let font_size = font_size * self.scale as u32;
+        self.layout = Layout {
+            font_size,
+            workspaces: self.workspace_group.layout(font_size),
+            blocks: blocks.iter().map(|b| b.layout(font_size)).collect(),
+        };
     }
 }
 

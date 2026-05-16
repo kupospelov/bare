@@ -35,8 +35,8 @@ impl Time {
 }
 
 impl Block for Time {
-    fn layout(&self, font_size: u32) -> render::Layout {
-        render::Layout {
+    fn layout(&self, font_size: u32) -> render::BlockLayout {
+        render::BlockLayout {
             height: font_size as i32 * 2 + super::inner_margin(font_size),
             config: BlockConfig::default(),
             background: render::COLOR_BACKGROUND,

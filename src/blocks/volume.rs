@@ -76,8 +76,8 @@ impl Volume {
 }
 
 impl Block for Volume {
-    fn layout(&self, font_size: u32) -> render::Layout {
-        render::Layout {
+    fn layout(&self, font_size: u32) -> render::BlockLayout {
+        render::BlockLayout {
             height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
             config: BlockConfig::default(),
             background: render::COLOR_BACKGROUND,

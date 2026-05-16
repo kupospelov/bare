@@ -20,11 +20,19 @@ pub struct Region {
     pub h: u32,
 }
 
-pub struct Layout {
+#[derive(Default)]
+pub struct BlockLayout {
     pub height: i32,
     pub config: BlockConfig,
     pub background: Color,
     pub border: Color,
+}
+
+#[derive(Default)]
+pub struct Layout {
+    pub font_size: u32,
+    pub workspaces: BlockLayout,
+    pub blocks: Vec<BlockLayout>,
 }
 
 pub struct Map<'a> {
@@ -52,7 +60,7 @@ impl<'a> Map<'a> {
 
 pub struct Renderer {
     pub rasterizer: Rasterizer,
-    font_size: u32,
+    pub font_size: u32,
 }
 
 impl Renderer {
@@ -258,8 +266,8 @@ impl Renderer {
         let mut map = Map::new(&mut buffer.mmap[start..start + frame_size], physical_height);
         map.clear(bg_color);
 
-        let font_size = self.font_size * scale as u32;
-        let layout = output.workspace_group.layout(font_size);
+        let font_size = output.layout.font_size;
+        let layout = &output.layout.workspaces;
         let inner = self.draw_block(
             &mut map,
             Region {
@@ -278,9 +286,8 @@ impl Renderer {
 
         let mut y = physical_height as i32;
         let block_margin = font_size;
-        for block in blocks.iter_mut() {
-            // TODO: Compute layouts once.
-            let layout = block.layout(font_size);
+        for (i, block) in blocks.iter_mut().enumerate() {
+            let layout = &output.layout.blocks[i];
             y -= layout.height;
             let inner = self.draw_block(
                 &mut map,
