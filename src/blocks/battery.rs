@@ -1,5 +1,5 @@
 use super::{Block, Fd};
-use crate::config::BlockConfig;
+use crate::config::{BatteryConfig, ColorConfig};
 use crate::render;
 use crate::{debug, error};
 use nix::sys::socket::{
@@ -12,20 +12,16 @@ const BATTERY_UEVENT_PATH: &str = "/sys/class/power_supply/BAT0/uevent";
 pub struct Battery {
     pub capacity: String,
     socket: OwnedFd,
-}
-
-impl Default for Battery {
-    fn default() -> Self {
-        Self::new()
-    }
+    config: BatteryConfig,
 }
 
 impl Battery {
-    pub fn new() -> Self {
+    pub fn new(config: &BatteryConfig) -> Self {
         let socket = open_uevent_socket().expect("Failed to open uevent socket");
         let mut battery = Self {
             capacity: String::new(),
             socket,
+            config: config.clone(),
         };
         match std::fs::read(BATTERY_UEVENT_PATH) {
             Ok(bytes) => {
@@ -93,8 +89,12 @@ impl Block for Battery {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
         render::BlockLayout {
             height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
-            config: BlockConfig::default(),
+            config: self.config.block.clone(),
         }
+    }
+
+    fn colors(&self) -> &ColorConfig {
+        &self.config.color
     }
 
     fn render(
@@ -104,7 +104,7 @@ impl Block for Battery {
         region: render::Region,
         font_size: u32,
     ) {
-        let bg_color = render::COLOR_BACKGROUND;
+        let color = &self.config.color;
         let capacity = if self.capacity.is_empty() {
             "??"
         } else {
@@ -122,8 +122,8 @@ impl Block for Battery {
                 h: label_size,
             },
             "BAT",
-            render::COLOR_INACTIVE,
-            bg_color,
+            color.text,
+            color.background,
             label_size,
         );
         renderer.render_text(
@@ -135,8 +135,8 @@ impl Block for Battery {
                 h: font_size,
             },
             capacity,
-            render::COLOR_INACTIVE,
-            bg_color,
+            color.text,
+            color.background,
             font_size,
         );
     }
