@@ -24,8 +24,6 @@ pub struct Region {
 pub struct BlockLayout {
     pub height: i32,
     pub config: BlockConfig,
-    pub background: Color,
-    pub border: Color,
 }
 
 #[derive(Default)]
@@ -268,6 +266,7 @@ impl Renderer {
 
         let font_size = output.layout.font_size;
         let layout = &output.layout.workspaces;
+        let colors = output.workspace_group.colors();
         let inner = self.draw_block(
             &mut map,
             Region {
@@ -277,8 +276,8 @@ impl Renderer {
                 h: layout.height.max(0) as u32,
             },
             &layout.config,
-            layout.background,
-            layout.border,
+            colors.background,
+            colors.border,
         );
         output
             .workspace_group
@@ -288,6 +287,7 @@ impl Renderer {
         let block_margin = font_size;
         for (i, block) in blocks.iter_mut().enumerate() {
             let layout = &output.layout.blocks[i];
+            let colors = block.colors();
             y -= layout.height;
             let inner = self.draw_block(
                 &mut map,
@@ -298,8 +298,8 @@ impl Renderer {
                     h: layout.height.max(0) as u32,
                 },
                 &layout.config,
-                layout.background,
-                layout.border,
+                colors.background,
+                colors.border,
             );
             block.render(self, &mut map, inner, font_size);
             y -= block_margin as i32;

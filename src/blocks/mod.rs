@@ -3,7 +3,8 @@ pub mod time;
 pub mod volume;
 pub mod workspaces;
 
-use crate::config::Config;
+use crate::config::{ColorConfig, Config};
+use crate::render;
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
 pub fn inner_margin(font_size: u32) -> i32 {
@@ -18,9 +19,21 @@ impl AsFd for Fd {
     }
 }
 
+// TODO: Remove.
+const DEFAULT_COLORS: ColorConfig = ColorConfig {
+    text: render::COLOR_INACTIVE,
+    background: render::COLOR_BACKGROUND,
+    border: render::COLOR_BACKGROUND,
+};
+
 pub trait Block {
     /// The block layout.
     fn layout(&self, font_size: u32) -> crate::render::BlockLayout;
+
+    /// The block colors.
+    fn colors(&self) -> &ColorConfig {
+        &DEFAULT_COLORS
+    }
 
     /// Render into the region of `mapping`.
     fn render(

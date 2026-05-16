@@ -39,8 +39,6 @@ impl Block for Workspaces {
         render::BlockLayout {
             height: self.items.len() as i32 * self.height,
             config: BlockConfig::default(),
-            background: render::COLOR_BACKGROUND,
-            border: render::COLOR_BACKGROUND,
         }
     }
 

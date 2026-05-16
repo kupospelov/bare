@@ -3,6 +3,10 @@ use crate::debug;
 use serde::Deserialize;
 use std::path::PathBuf;
 
+const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
+const COLOR_TEXT: Color = Color::rgb(100, 100, 100);
+const COLOR_DIMMED: Color = Color::rgb(50, 50, 50);
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -38,7 +42,7 @@ pub struct WorkspaceConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceStateConfig {
-    pub color: WorkspaceColorConfig,
+    pub color: ColorConfig,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
@@ -57,8 +61,9 @@ impl BlockConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorkspaceColorConfig {
+#[derive(Debug, Default, Deserialize, Clone, PartialEq)]
+#[serde(default)]
+pub struct ColorConfig {
     pub text: Color,
     pub background: Color,
     pub border: Color,
@@ -80,21 +85,21 @@ impl Default for WorkspaceConfig {
         Self {
             block: BlockConfig::default(),
             active: WorkspaceStateConfig {
-                color: WorkspaceColorConfig {
+                color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x28, 0x55, 0x77),
                     border: Color::rgb(0x4c, 0x78, 0x99),
                 },
             },
             inactive: WorkspaceStateConfig {
-                color: WorkspaceColorConfig {
+                color: ColorConfig {
                     text: Color::rgb(0x88, 0x88, 0x88),
                     background: Color::rgb(0x22, 0x22, 0x22),
                     border: Color::rgb(0x33, 0x33, 0x33),
                 },
             },
             urgent: WorkspaceStateConfig {
-                color: WorkspaceColorConfig {
+                color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x90, 0, 0),
                     border: Color::rgb(0x2f, 0x34, 0x3a),
@@ -104,28 +109,35 @@ impl Default for WorkspaceConfig {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
-#[serde(default)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "shadow::VolumeConfig")]
 pub struct VolumeConfig {
+    pub block: BlockConfig,
+    pub color: ColorConfig,
     pub muted: VolumeStateConfig,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VolumeStateConfig {
-    pub color: VolumeColorConfig,
+    pub color: ColorConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct VolumeColorConfig {
-    pub text: Color,
-}
-
-impl Default for VolumeColorConfig {
+impl Default for VolumeConfig {
     fn default() -> Self {
         Self {
-            text: Color::rgb(50, 50, 50),
+            block: BlockConfig::default(),
+            color: ColorConfig {
+                text: COLOR_TEXT,
+                background: COLOR_BACKGROUND,
+                border: COLOR_BACKGROUND,
+            },
+            muted: VolumeStateConfig {
+                color: ColorConfig {
+                    text: COLOR_DIMMED,
+                    background: COLOR_BACKGROUND,
+                    border: COLOR_BACKGROUND,
+                },
+            },
         }
     }
 }
@@ -174,7 +186,22 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct WorkspaceStateConfig {
-        pub color: WorkspaceColorConfig,
+        pub color: ColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct VolumeConfig {
+        #[serde(flatten)]
+        pub block: BlockConfig,
+        pub color: ColorConfig,
+        pub muted: VolumeStateConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct VolumeStateConfig {
+        pub color: ColorConfig,
     }
 
     #[derive(Default, Deserialize)]
@@ -186,7 +213,7 @@ mod shadow {
 
     #[derive(Default, Deserialize)]
     #[serde(default)]
-    pub(super) struct WorkspaceColorConfig {
+    pub(super) struct ColorConfig {
         pub text: Option<Color>,
         pub background: Option<Color>,
         pub border: Option<Color>,
@@ -203,6 +230,17 @@ mod shadow {
         }
     }
 
+    impl VolumeStateConfig {
+        pub(super) fn resolve(
+            self,
+            default: &super::VolumeStateConfig,
+        ) -> super::VolumeStateConfig {
+            super::VolumeStateConfig {
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
     impl BlockConfig {
         pub(super) fn resolve(self, default: &super::BlockConfig) -> super::BlockConfig {
             super::BlockConfig {
@@ -212,12 +250,9 @@ mod shadow {
         }
     }
 
-    impl WorkspaceColorConfig {
-        pub(super) fn resolve(
-            self,
-            default: &super::WorkspaceColorConfig,
-        ) -> super::WorkspaceColorConfig {
-            super::WorkspaceColorConfig {
+    impl ColorConfig {
+        pub(super) fn resolve(self, default: &super::ColorConfig) -> super::ColorConfig {
+            super::ColorConfig {
                 text: self.text.unwrap_or(default.text),
                 background: self.background.unwrap_or(default.background),
                 border: self.border.unwrap_or(default.border),
@@ -234,6 +269,17 @@ impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
             active: shadow.active.resolve(&d.active),
             inactive: shadow.inactive.resolve(&d.inactive),
             urgent: shadow.urgent.resolve(&d.urgent),
+        }
+    }
+}
+
+impl From<shadow::VolumeConfig> for VolumeConfig {
+    fn from(shadow: shadow::VolumeConfig) -> Self {
+        let d = VolumeConfig::default();
+        Self {
+            block: shadow.block.resolve(&d.block),
+            color: shadow.color.resolve(&d.color),
+            muted: shadow.muted.resolve(&d.muted),
         }
     }
 }
@@ -282,5 +328,36 @@ mod tests {
         expected.inactive.color.background = Color::rgb(0x11, 0x22, 0x33);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn volume_defaults() {
+        let actual: VolumeConfig = toml::from_str("").unwrap();
+
+        assert_eq!(actual, VolumeConfig::default());
+        assert_eq!(actual.block.gaps, [0, 0, 0, 0]);
+        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.muted.color.text, Color::rgb(50, 50, 50));
+        assert_eq!(actual.muted.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(actual.muted.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn volume_partial_override() {
+        let actual: VolumeConfig = toml::from_str(
+            r###"
+            gaps = [1, 2, 3, 4]
+
+            [muted.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        assert_eq!(actual.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(actual.block.borders, [0, 0, 0, 0]);
+        assert_eq!(actual.muted.color.text, Color::rgb(50, 50, 50));
+        assert_eq!(actual.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(actual.muted.color.border, Color::rgb(0, 0, 0));
     }
 }

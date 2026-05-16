@@ -39,8 +39,6 @@ impl Block for Time {
         render::BlockLayout {
             height: font_size as i32 * 2 + super::inner_margin(font_size),
             config: BlockConfig::default(),
-            background: render::COLOR_BACKGROUND,
-            border: render::COLOR_BACKGROUND,
         }
     }
 

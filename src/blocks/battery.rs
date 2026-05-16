@@ -94,8 +94,6 @@ impl Block for Battery {
         render::BlockLayout {
             height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
             config: BlockConfig::default(),
-            background: render::COLOR_BACKGROUND,
-            border: render::COLOR_BACKGROUND,
         }
     }
 

@@ -1,5 +1,5 @@
 use super::{Block, Fd};
-use crate::config::{BlockConfig, VolumeConfig};
+use crate::config::{ColorConfig, VolumeConfig};
 use crate::render;
 use crate::{debug, error};
 use pipewire as pw;
@@ -79,10 +79,12 @@ impl Block for Volume {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
         render::BlockLayout {
             height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
-            config: BlockConfig::default(),
-            background: render::COLOR_BACKGROUND,
-            border: render::COLOR_BACKGROUND,
+            config: self.config.block.clone(),
         }
+    }
+
+    fn colors(&self) -> &ColorConfig {
+        &self.config.color
     }
 
     fn render(
@@ -97,11 +99,10 @@ impl Block for Volume {
             Some(p) => format!("{}", p),
             None => "??".to_string(),
         };
-        let bg_color = render::COLOR_BACKGROUND;
-        let ft_color = if state.mute {
-            self.config.muted.color.text
+        let color = if state.mute {
+            &self.config.muted.color
         } else {
-            render::COLOR_INACTIVE
+            &self.config.color
         };
 
         let margin = super::inner_margin(font_size);
@@ -115,8 +116,8 @@ impl Block for Volume {
                 h: label_size,
             },
             "VOL",
-            ft_color,
-            bg_color,
+            color.text,
+            color.background,
             label_size,
         );
         renderer.render_text(
@@ -128,8 +129,8 @@ impl Block for Volume {
                 h: font_size,
             },
             &value,
-            ft_color,
-            bg_color,
+            color.text,
+            color.background,
             font_size,
         );
     }
