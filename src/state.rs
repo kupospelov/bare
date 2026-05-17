@@ -1,5 +1,4 @@
-use crate::blocks;
-use crate::blocks::Block;
+use crate::blocks::{self, Block};
 use crate::config::Config;
 use crate::font;
 use crate::raster;
@@ -56,21 +55,10 @@ pub struct State {
     pub blocks: Vec<Box<dyn Block>>,
 }
 
-fn create_blocks(config: &Config) -> Vec<Box<dyn Block>> {
-    let mut blocks: Vec<Box<dyn Block>> = Vec::new();
-    blocks.push(Box::new(blocks::time::Time::new(&config.time)));
-    blocks.push(Box::new(blocks::battery::Battery::new(&config.battery)));
-    if let Ok(volume) = blocks::volume::Volume::new(&config.volume) {
-        blocks.push(Box::new(volume));
-    }
-
-    blocks
-}
-
 impl State {
     pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
         let (font, font_size) = font::load(&config.bar.font);
-        let blocks = create_blocks(&config);
+        let blocks = blocks::new(&config);
         Self {
             config,
             qh,

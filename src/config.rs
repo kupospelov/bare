@@ -1,6 +1,7 @@
 use crate::color::Color;
 use crate::debug;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const COLOR_BACKGROUND: Color = Color::rgb(0, 0, 0);
@@ -12,9 +13,9 @@ const COLOR_DIMMED: Color = Color::rgb(50, 50, 50);
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
-    pub volume: VolumeConfig,
-    pub battery: BatteryConfig,
-    pub time: TimeConfig,
+    pub volume: HashMap<String, VolumeConfig>,
+    pub battery: HashMap<String, BatteryConfig>,
+    pub time: HashMap<String, TimeConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +23,7 @@ pub struct Config {
 pub struct BarConfig {
     pub font: String,
     pub width: u32,
+    pub blocks: Vec<String>,
 }
 
 impl Default for BarConfig {
@@ -29,6 +31,11 @@ impl Default for BarConfig {
         Self {
             font: "Sans Bold".into(),
             width: 28,
+            blocks: vec![
+                "volume.default".into(),
+                "battery.default".into(),
+                "time.default".into(),
+            ],
         }
     }
 }

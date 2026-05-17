@@ -10,6 +10,39 @@ pub fn inner_margin(font_size: u32) -> i32 {
     font_size as i32 / 5
 }
 
+pub fn new(config: &Config) -> Vec<Box<dyn Block>> {
+    let mut blocks: Vec<Box<dyn Block>> = Vec::with_capacity(config.bar.blocks.len());
+    for entry in config.bar.blocks.iter().rev() {
+        let (kind, name) = entry.split_once('.').unwrap_or_else(|| {
+            panic!(
+                "Invalid bar.blocks entry '{}': expected '<type>.<name>'",
+                entry
+            )
+        });
+        match kind {
+            "time" => {
+                let cfg = config.time.get(name).cloned().unwrap_or_default();
+                blocks.push(Box::new(time::Time::new(&cfg)));
+            }
+            "battery" => {
+                let cfg = config.battery.get(name).cloned().unwrap_or_default();
+                blocks.push(Box::new(battery::Battery::new(&cfg)));
+            }
+            "volume" => {
+                let cfg = config.volume.get(name).cloned().unwrap_or_default();
+                let volume = volume::Volume::new(&cfg)
+                    .unwrap_or_else(|e| panic!("Failed to construct volume.{}: {}", name, e));
+                blocks.push(Box::new(volume));
+            }
+            _ => panic!(
+                "Unknown block type '{}' in bar.blocks entry '{}'",
+                kind, entry
+            ),
+        }
+    }
+    blocks
+}
+
 pub struct Fd(pub RawFd);
 
 impl AsFd for Fd {
@@ -57,4 +90,27 @@ pub trait Block {
 
     /// React to an output scale change.
     fn set_scale(&mut self, _config: &Config, _scale: i32) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_with_blocks(entries: &[&str]) -> Config {
+        let mut config = Config::default();
+        config.bar.blocks = entries.iter().map(|s| (*s).to_string()).collect();
+        config
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid bar.blocks entry 'noname'")]
+    fn missing_separator_panics() {
+        new(&config_with_blocks(&["noname"]));
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown block type 'unknown' in bar.blocks entry 'unknown.default'")]
+    fn unknown_kind_panics() {
+        new(&config_with_blocks(&["unknown.default"]));
+    }
 }
