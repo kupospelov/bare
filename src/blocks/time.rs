@@ -1,25 +1,22 @@
 use super::Block;
-use crate::config::{ColorConfig, TimeConfig};
+use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
 use crate::render;
 use crate::{debug, error};
 
 pub struct Time {
-    pub hours: String,
-    pub minutes: String,
+    now: time::OffsetDateTime,
     config: TimeConfig,
 }
 
 impl Time {
     pub fn new(config: &TimeConfig) -> Self {
-        let (hours, minutes) = Self::get_time();
         Self {
-            hours,
-            minutes,
+            now: Self::now(),
             config: config.clone(),
         }
     }
 
-    fn get_time() -> (String, String) {
+    fn now() -> time::OffsetDateTime {
         let now = match time::OffsetDateTime::now_local() {
             Ok(local) => local,
             Err(error) => {
@@ -27,16 +24,40 @@ impl Time {
                 time::OffsetDateTime::now_utc()
             }
         };
-
         debug!("Updated local time: {}", now);
-        (format!("{:02}", now.hour()), format!("{:02}", now.minute()))
+        now
+    }
+
+    fn item_text(&self, item: &TimeFormatItem) -> String {
+        match item {
+            TimeFormatItem::Hour => format!("{:02}", self.now.hour()),
+            TimeFormatItem::Minute => format!("{:02}", self.now.minute()),
+            TimeFormatItem::Day => format!("{:02}", self.now.day()),
+            TimeFormatItem::Month => format!("{:02}", u8::from(self.now.month())),
+            TimeFormatItem::Label(s) => s.clone(),
+        }
+    }
+
+    fn item_height(item: &TimeFormatItem, font_size: u32) -> u32 {
+        match item {
+            TimeFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
+            _ => font_size,
+        }
     }
 }
 
 impl Block for Time {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
+        let margin = super::inner_margin(font_size);
+        let items = &self.config.format;
+        let gaps = items.len().saturating_sub(1) as i32;
+        let height: i32 = items
+            .iter()
+            .map(|i| Self::item_height(i, font_size) as i32)
+            .sum::<i32>()
+            + gaps * margin;
         render::BlockLayout {
-            height: font_size as i32 * 2 + super::inner_margin(font_size),
+            height,
             config: self.config.block.clone(),
         }
     }
@@ -54,38 +75,29 @@ impl Block for Time {
     ) {
         let color = &self.config.color;
         let margin = super::inner_margin(font_size);
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y,
-                w: region.w,
-                h: font_size,
-            },
-            &self.hours,
-            color.text,
-            color.background,
-            font_size,
-        );
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y + font_size as i32 + margin,
-                w: region.w,
-                h: font_size,
-            },
-            &self.minutes,
-            color.text,
-            color.background,
-            font_size,
-        );
+        let mut y = region.y;
+        for item in &self.config.format {
+            let h = Self::item_height(item, font_size);
+            let text = self.item_text(item);
+            renderer.render_text(
+                map,
+                render::Region {
+                    x: region.x,
+                    y,
+                    w: region.w,
+                    h,
+                },
+                &text,
+                color.text,
+                color.background,
+                h,
+            );
+            y += h as i32 + margin;
+        }
     }
 
     fn update(&mut self) -> bool {
-        let (hours, minutes) = Self::get_time();
-        self.hours = hours;
-        self.minutes = minutes;
+        self.now = Self::now();
         true
     }
 

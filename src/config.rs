@@ -166,6 +166,7 @@ impl BatteryConfig {
 pub struct TimeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
+    pub format: Vec<TimeFormatItem>,
 }
 
 impl TimeConfig {
@@ -173,6 +174,28 @@ impl TimeConfig {
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
+            format: vec![TimeFormatItem::Hour, TimeFormatItem::Minute],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TimeFormatItem {
+    Hour,
+    Minute,
+    Day,
+    Month,
+    Label(String),
+}
+
+impl TimeFormatItem {
+    pub(crate) fn parse(s: String) -> Self {
+        match s.as_str() {
+            "[hour]" => Self::Hour,
+            "[minute]" => Self::Minute,
+            "[day]" => Self::Day,
+            "[month]" => Self::Month,
+            _ => Self::Label(s),
         }
     }
 }
@@ -279,6 +302,7 @@ mod shadow {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
+        pub format: Option<Vec<String>>,
     }
 
     #[derive(Default, Deserialize)]
@@ -342,6 +366,10 @@ mod shadow {
             super::TimeConfig {
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
+                format: self
+                    .format
+                    .map(|v| v.into_iter().map(super::TimeFormatItem::parse).collect())
+                    .unwrap_or_else(|| default.format.clone()),
             }
         }
     }
@@ -552,6 +580,42 @@ mod tests {
         assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(t.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(t.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn time_format_default() {
+        let config: Config = toml::from_str(
+            r###"
+            [time.default]
+            "###,
+        )
+        .unwrap();
+
+        let t = config.time.get("default").unwrap();
+        assert_eq!(t.format, vec![TimeFormatItem::Hour, TimeFormatItem::Minute]);
+    }
+
+    #[test]
+    fn time_format_parses_tokens_and_labels() {
+        let config: Config = toml::from_str(
+            r###"
+            [time.default]
+            format = ["[hour]", "[minute]", "[day]", "[month]", "hello"]
+            "###,
+        )
+        .unwrap();
+
+        let t = config.time.get("default").unwrap();
+        assert_eq!(
+            t.format,
+            vec![
+                TimeFormatItem::Hour,
+                TimeFormatItem::Minute,
+                TimeFormatItem::Day,
+                TimeFormatItem::Month,
+                TimeFormatItem::Label("hello".into()),
+            ]
+        );
     }
 
     #[test]
