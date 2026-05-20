@@ -1,5 +1,5 @@
 use super::{Block, Fd};
-use crate::config::{BatteryConfig, ColorConfig};
+use crate::config::{BatteryConfig, BatteryFormatItem, ColorConfig};
 use crate::render;
 use crate::{debug, error};
 use nix::sys::socket::{
@@ -41,6 +41,26 @@ impl Battery {
         debug!("Updated battery capacity: {}", c);
         self.capacity = c;
         true
+    }
+
+    fn item_text(&self, item: &BatteryFormatItem) -> String {
+        match item {
+            BatteryFormatItem::Capacity => {
+                if self.capacity.is_empty() {
+                    "??".into()
+                } else {
+                    self.capacity.clone()
+                }
+            }
+            BatteryFormatItem::Label(s) => s.clone(),
+        }
+    }
+
+    fn item_height(item: &BatteryFormatItem, font_size: u32) -> u32 {
+        match item {
+            BatteryFormatItem::Capacity => font_size,
+            BatteryFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
+        }
     }
 
     fn drain(&mut self) -> bool {
@@ -87,8 +107,16 @@ fn open_uevent_socket() -> nix::Result<OwnedFd> {
 
 impl Block for Battery {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
+        let margin = super::inner_margin(font_size);
+        let items = &self.config.format;
+        let gaps = items.len().saturating_sub(1) as i32;
+        let height: i32 = items
+            .iter()
+            .map(|i| Self::item_height(i, font_size) as i32)
+            .sum::<i32>()
+            + gaps * margin;
         render::BlockLayout {
-            height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
+            height,
             config: self.config.block.clone(),
         }
     }
@@ -105,40 +133,26 @@ impl Block for Battery {
         font_size: u32,
     ) {
         let color = &self.config.color;
-        let capacity = if self.capacity.is_empty() {
-            "??"
-        } else {
-            &self.capacity
-        };
-
         let margin = super::inner_margin(font_size);
-        let label_size = font_size * 2 / 3;
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y,
-                w: region.w,
-                h: label_size,
-            },
-            "BAT",
-            color.text,
-            color.background,
-            label_size,
-        );
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y + label_size as i32 + margin,
-                w: region.w,
-                h: font_size,
-            },
-            capacity,
-            color.text,
-            color.background,
-            font_size,
-        );
+        let mut y = region.y;
+        for item in &self.config.format {
+            let h = Self::item_height(item, font_size);
+            let text = self.item_text(item);
+            renderer.render_text(
+                map,
+                render::Region {
+                    x: region.x,
+                    y,
+                    w: region.w,
+                    h,
+                },
+                &text,
+                color.text,
+                color.background,
+                h,
+            );
+            y += h as i32 + margin;
+        }
     }
 
     fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {

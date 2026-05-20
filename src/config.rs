@@ -151,6 +151,7 @@ impl VolumeConfig {
 pub struct BatteryConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
+    pub format: Vec<BatteryFormatItem>,
 }
 
 impl BatteryConfig {
@@ -158,6 +159,25 @@ impl BatteryConfig {
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
+            format: vec![
+                BatteryFormatItem::Label("BAT".into()),
+                BatteryFormatItem::Capacity,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BatteryFormatItem {
+    Capacity,
+    Label(String),
+}
+
+impl BatteryFormatItem {
+    pub(crate) fn parse(s: String) -> Self {
+        match s.as_str() {
+            "[capacity]" => Self::Capacity,
+            _ => Self::Label(s),
         }
     }
 }
@@ -294,6 +314,7 @@ mod shadow {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
+        pub format: Option<Vec<String>>,
     }
 
     #[derive(Default, Deserialize)]
@@ -357,6 +378,10 @@ mod shadow {
             super::BatteryConfig {
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
+                format: self
+                    .format
+                    .map(|v| v.into_iter().map(super::BatteryFormatItem::parse).collect())
+                    .unwrap_or_else(|| default.format.clone()),
             }
         }
     }
@@ -614,6 +639,45 @@ mod tests {
                 TimeFormatItem::Day,
                 TimeFormatItem::Month,
                 TimeFormatItem::Label("hello".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn battery_format_default() {
+        let config: Config = toml::from_str(
+            r###"
+            [battery.default]
+            "###,
+        )
+        .unwrap();
+
+        let b = config.battery.get("default").unwrap();
+        assert_eq!(
+            b.format,
+            vec![
+                BatteryFormatItem::Label("BAT".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+    }
+
+    #[test]
+    fn battery_format_parses_tokens_and_labels() {
+        let config: Config = toml::from_str(
+            r###"
+            [battery.default]
+            format = ["[capacity]", "hello"]
+            "###,
+        )
+        .unwrap();
+
+        let b = config.battery.get("default").unwrap();
+        assert_eq!(
+            b.format,
+            vec![
+                BatteryFormatItem::Capacity,
+                BatteryFormatItem::Label("hello".into()),
             ]
         );
     }
