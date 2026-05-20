@@ -36,8 +36,10 @@ impl Workspaces {
 
 impl Block for Workspaces {
     fn layout(&self, _font_size: u32) -> render::BlockLayout {
+        let height = self.items.len() as i32 * self.height;
         render::BlockLayout {
-            height: self.items.len() as i32 * self.height,
+            content: height,
+            height,
             config: BlockConfig::default(),
         }
     }

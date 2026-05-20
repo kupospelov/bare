@@ -63,6 +63,7 @@ pub struct WorkspaceStateConfig {
 pub struct BlockConfig {
     pub gaps: [i32; 4],
     pub borders: [i32; 4],
+    pub height: Option<i32>,
 }
 
 impl BlockConfig {
@@ -70,6 +71,7 @@ impl BlockConfig {
         Self {
             gaps: self.gaps.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
+            height: self.height.map(|h| h * scale),
         }
     }
 }
@@ -355,6 +357,7 @@ mod shadow {
     pub(super) struct BlockConfig {
         pub gaps: Option<[i32; 4]>,
         pub borders: Option<[i32; 4]>,
+        pub height: Option<i32>,
     }
 
     #[derive(Default, Deserialize)]
@@ -432,6 +435,7 @@ mod shadow {
             super::BlockConfig {
                 gaps: self.gaps.unwrap_or(default.gaps),
                 borders: self.borders.unwrap_or(default.borders),
+                height: self.height.or(default.height),
             }
         }
     }
@@ -522,6 +526,7 @@ mod tests {
         let w = config.workspace;
         assert_eq!(w.block.gaps, [0, 0, 0, 0]);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.height, None);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));
         assert_eq!(w.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
@@ -750,6 +755,23 @@ mod tests {
                 BatteryFormatItem::Label("hello".into()),
             ]
         );
+    }
+
+    #[test]
+    fn block_height_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [time.default]
+            height = 64
+
+            [battery.default]
+            gaps = [1, 2, 3, 4]
+            "###,
+        )
+        .unwrap();
+
+        assert_eq!(config.time.get("default").unwrap().block.height, Some(64));
+        assert_eq!(config.battery.get("default").unwrap().block.height, None);
     }
 
     #[test]

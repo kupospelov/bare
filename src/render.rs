@@ -19,6 +19,7 @@ pub struct Region {
 
 #[derive(Default)]
 pub struct BlockLayout {
+    pub content: i32,
     pub height: i32,
     pub config: BlockConfig,
 }
@@ -295,7 +296,17 @@ impl Renderer {
                 colors.background,
                 colors.border,
             );
-            block.render(self, &mut map, inner, font_size);
+            block.render(
+                self,
+                &mut map,
+                Region {
+                    x: inner.x,
+                    y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,
+                    w: inner.w,
+                    h: layout.content.max(0) as u32,
+                },
+                font_size,
+            );
             y -= output.layout.separator as i32;
         }
 
@@ -417,6 +428,7 @@ mod tests {
         let config = BlockConfig {
             gaps: [1, 2, 3, 4],
             borders: [5, 6, 7, 8],
+            height: None,
         };
         let inner = r.draw_block(&mut map, outer, &config, BG, FG);
         assert_eq!(inner.x, 4 + 8);

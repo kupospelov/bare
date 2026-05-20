@@ -116,7 +116,8 @@ impl Block for Battery {
             .sum::<i32>()
             + gaps * margin;
         render::BlockLayout {
-            height,
+            content: height,
+            height: self.config.block.height.unwrap_or(height),
             config: self.config.block.clone(),
         }
     }
