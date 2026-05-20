@@ -52,10 +52,12 @@ impl Output {
         }
     }
 
-    pub fn update_layout(&mut self, blocks: &[Box<dyn Block>], font_size: u32) {
+    pub fn update_layout(&mut self, blocks: &[Box<dyn Block>], font_size: u32, separator: u32) {
         let font_size = font_size * self.scale as u32;
+        let separator = separator * self.scale as u32;
         self.layout = Layout {
             font_size,
+            separator,
             workspaces: self.workspace_group.layout(font_size),
             blocks: blocks.iter().map(|b| b.layout(font_size)).collect(),
         };

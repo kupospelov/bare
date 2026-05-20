@@ -19,6 +19,7 @@ pub struct Config {
 pub struct BarConfig {
     pub font: String,
     pub width: u32,
+    pub separator: u32,
     pub blocks: Vec<String>,
     pub color: ColorConfig,
 }
@@ -28,6 +29,7 @@ impl Default for BarConfig {
         Self {
             font: "Sans Bold".into(),
             width: 28,
+            separator: 14,
             blocks: vec![
                 "volume.default".into(),
                 "battery.default".into(),
@@ -293,6 +295,7 @@ mod shadow {
     pub(super) struct BarConfig {
         pub font: Option<String>,
         pub width: Option<u32>,
+        pub separator: Option<u32>,
         pub blocks: Option<Vec<String>>,
         pub color: ColorConfig,
     }
@@ -478,6 +481,7 @@ impl From<shadow::BarConfig> for BarConfig {
         Self {
             font: shadow.font.unwrap_or(d.font),
             width: shadow.width.unwrap_or(d.width),
+            separator: shadow.separator.unwrap_or(d.separator),
             blocks: shadow.blocks.unwrap_or(d.blocks),
             color: shadow.color.resolve(&d.color),
         }
@@ -505,6 +509,8 @@ mod tests {
         let config: Config = toml::from_str("").unwrap();
 
         let b = config.bar;
+        assert_eq!(b.width, 28);
+        assert_eq!(b.separator, 14);
         assert_eq!(
             b.blocks,
             ["volume.default", "battery.default", "time.default"]

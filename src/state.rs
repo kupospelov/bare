@@ -113,7 +113,11 @@ impl State {
             surface,
             layer_surface,
         );
-        output.update_layout(&self.blocks, self.renderer.font_size);
+        output.update_layout(
+            &self.blocks,
+            self.renderer.font_size,
+            self.config.bar.separator,
+        );
         self.outputs.insert(id, output);
     }
 
@@ -398,7 +402,11 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
 
                     o.scale = factor;
                     o.workspace_group.set_scale(&state.config, factor);
-                    o.update_layout(&state.blocks, state.renderer.font_size);
+                    o.update_layout(
+                        &state.blocks,
+                        state.renderer.font_size,
+                        state.config.bar.separator,
+                    );
                 }
             }
             wl_output::Event::Done => {

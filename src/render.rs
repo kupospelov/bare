@@ -26,6 +26,7 @@ pub struct BlockLayout {
 #[derive(Default)]
 pub struct Layout {
     pub font_size: u32,
+    pub separator: u32,
     pub workspaces: BlockLayout,
     pub blocks: Vec<BlockLayout>,
 }
@@ -278,7 +279,6 @@ impl Renderer {
         );
 
         let mut y = physical_height as i32;
-        let block_margin = font_size;
         for (i, block) in blocks.iter_mut().enumerate() {
             let layout = &output.layout.blocks[i];
             let colors = block.colors();
@@ -296,7 +296,7 @@ impl Renderer {
                 colors.border,
             );
             block.render(self, &mut map, inner, font_size);
-            y -= block_margin as i32;
+            y -= output.layout.separator as i32;
         }
 
         buffer.released[buffer.back] = false;
