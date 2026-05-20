@@ -125,6 +125,7 @@ pub struct VolumeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub muted: VolumeStateConfig,
+    pub format: Vec<VolumeFormatItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,6 +144,25 @@ impl VolumeConfig {
                     ..*color
                 },
             },
+            format: vec![
+                VolumeFormatItem::Label("VOL".into()),
+                VolumeFormatItem::Volume,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VolumeFormatItem {
+    Volume,
+    Label(String),
+}
+
+impl VolumeFormatItem {
+    pub(crate) fn parse(s: String) -> Self {
+        match s.as_str() {
+            "[volume]" => Self::Volume,
+            _ => Self::Label(s),
         }
     }
 }
@@ -300,6 +320,7 @@ mod shadow {
         pub block: BlockConfig,
         pub color: ColorConfig,
         pub muted: VolumeStateConfig,
+        pub format: Option<Vec<String>>,
     }
 
     #[derive(Default, Deserialize)]
@@ -369,6 +390,10 @@ mod shadow {
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
                 muted: self.muted.resolve(&default.muted),
+                format: self
+                    .format
+                    .map(|v| v.into_iter().map(super::VolumeFormatItem::parse).collect())
+                    .unwrap_or_else(|| default.format.clone()),
             }
         }
     }
@@ -639,6 +664,45 @@ mod tests {
                 TimeFormatItem::Day,
                 TimeFormatItem::Month,
                 TimeFormatItem::Label("hello".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn volume_format_default() {
+        let config: Config = toml::from_str(
+            r###"
+            [volume.default]
+            "###,
+        )
+        .unwrap();
+
+        let v = config.volume.get("default").unwrap();
+        assert_eq!(
+            v.format,
+            vec![
+                VolumeFormatItem::Label("VOL".into()),
+                VolumeFormatItem::Volume,
+            ]
+        );
+    }
+
+    #[test]
+    fn volume_format_parses_tokens_and_labels() {
+        let config: Config = toml::from_str(
+            r###"
+            [volume.default]
+            format = ["[volume]", "hello"]
+            "###,
+        )
+        .unwrap();
+
+        let v = config.volume.get("default").unwrap();
+        assert_eq!(
+            v.format,
+            vec![
+                VolumeFormatItem::Volume,
+                VolumeFormatItem::Label("hello".into()),
             ]
         );
     }

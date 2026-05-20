@@ -1,5 +1,5 @@
 use super::{Block, Fd};
-use crate::config::{ColorConfig, VolumeConfig};
+use crate::config::{ColorConfig, VolumeConfig, VolumeFormatItem};
 use crate::render;
 use crate::{debug, error};
 use pipewire as pw;
@@ -73,12 +73,37 @@ impl Volume {
             config: config.clone(),
         })
     }
+
+    fn item_text(&self, item: &VolumeFormatItem) -> String {
+        match item {
+            VolumeFormatItem::Volume => match self.state.borrow().current().percent {
+                Some(p) => format!("{}", p),
+                None => "??".into(),
+            },
+            VolumeFormatItem::Label(s) => s.clone(),
+        }
+    }
+
+    fn item_height(item: &VolumeFormatItem, font_size: u32) -> u32 {
+        match item {
+            VolumeFormatItem::Volume => font_size,
+            VolumeFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
+        }
+    }
 }
 
 impl Block for Volume {
     fn layout(&self, font_size: u32) -> render::BlockLayout {
+        let margin = super::inner_margin(font_size);
+        let items = &self.config.format;
+        let gaps = items.len().saturating_sub(1) as i32;
+        let height: i32 = items
+            .iter()
+            .map(|i| Self::item_height(i, font_size) as i32)
+            .sum::<i32>()
+            + gaps * margin;
         render::BlockLayout {
-            height: font_size as i32 + super::inner_margin(font_size) + (font_size * 2 / 3) as i32,
+            height,
             config: self.config.block.clone(),
         }
     }
@@ -98,45 +123,31 @@ impl Block for Volume {
         region: render::Region,
         font_size: u32,
     ) {
-        let state = self.state.borrow().current();
-        let value = match state.percent {
-            Some(p) => format!("{}", p),
-            None => "??".to_string(),
-        };
-        let color = if state.mute {
+        let color = if self.state.borrow().current().mute {
             &self.config.muted.color
         } else {
             &self.config.color
         };
-
         let margin = super::inner_margin(font_size);
-        let label_size = font_size * 2 / 3;
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y,
-                w: region.w,
-                h: label_size,
-            },
-            "VOL",
-            color.text,
-            color.background,
-            label_size,
-        );
-        renderer.render_text(
-            map,
-            render::Region {
-                x: region.x,
-                y: region.y + label_size as i32 + margin,
-                w: region.w,
-                h: font_size,
-            },
-            &value,
-            color.text,
-            color.background,
-            font_size,
-        );
+        let mut y = region.y;
+        for item in &self.config.format {
+            let h = Self::item_height(item, font_size);
+            let text = self.item_text(item);
+            renderer.render_text(
+                map,
+                render::Region {
+                    x: region.x,
+                    y,
+                    w: region.w,
+                    h,
+                },
+                &text,
+                color.text,
+                color.background,
+                h,
+            );
+            y += h as i32 + margin;
+        }
     }
 
     fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
