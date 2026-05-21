@@ -61,7 +61,7 @@ pub struct WorkspaceStateConfig {
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct BlockConfig {
-    pub gaps: [i32; 4],
+    pub margins: [i32; 4],
     pub borders: [i32; 4],
     pub height: Option<i32>,
 }
@@ -69,7 +69,7 @@ pub struct BlockConfig {
 impl BlockConfig {
     pub fn scaled(&self, scale: i32) -> Self {
         Self {
-            gaps: self.gaps.map(|v| v * scale),
+            margins: self.margins.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
             height: self.height.map(|h| h * scale),
         }
@@ -355,7 +355,7 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct BlockConfig {
-        pub gaps: Option<[i32; 4]>,
+        pub margins: Option<[i32; 4]>,
         pub borders: Option<[i32; 4]>,
         pub height: Option<i32>,
     }
@@ -433,7 +433,7 @@ mod shadow {
     impl BlockConfig {
         pub(super) fn resolve(self, default: &super::BlockConfig) -> super::BlockConfig {
             super::BlockConfig {
-                gaps: self.gaps.unwrap_or(default.gaps),
+                margins: self.margins.unwrap_or(default.margins),
                 borders: self.borders.unwrap_or(default.borders),
                 height: self.height.or(default.height),
             }
@@ -524,7 +524,7 @@ mod tests {
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
 
         let w = config.workspace;
-        assert_eq!(w.block.gaps, [0, 0, 0, 0]);
+        assert_eq!(w.block.margins, [0, 0, 0, 0]);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
         assert_eq!(w.block.height, None);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
@@ -564,7 +564,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [workspace]
-            gaps = [10, 20, 30, 40]
+            margins = [10, 20, 30, 40]
 
             [workspace.inactive.color]
             background = "#112233"
@@ -573,7 +573,7 @@ mod tests {
         .unwrap();
 
         let w = config.workspace;
-        assert_eq!(w.block.gaps, [10, 20, 30, 40]);
+        assert_eq!(w.block.margins, [10, 20, 30, 40]);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
         assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
@@ -585,7 +585,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [volume.default]
-            gaps = [1, 2, 3, 4]
+            margins = [1, 2, 3, 4]
 
             [volume.default.muted.color]
             background = "#aabbcc"
@@ -594,7 +594,7 @@ mod tests {
         .unwrap();
 
         let v = config.volume.get("default").unwrap();
-        assert_eq!(v.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(v.block.margins, [1, 2, 3, 4]);
         assert_eq!(v.block.borders, [0, 0, 0, 0]);
         assert_eq!(v.muted.color.text, Color::rgb(0x32, 0x32, 0x32));
         assert_eq!(v.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
@@ -606,7 +606,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [battery.default]
-            gaps = [1, 2, 3, 4]
+            margins = [1, 2, 3, 4]
 
             [battery.default.color]
             background = "#aabbcc"
@@ -615,7 +615,7 @@ mod tests {
         .unwrap();
 
         let b = config.battery.get("default").unwrap();
-        assert_eq!(b.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(b.block.margins, [1, 2, 3, 4]);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
@@ -627,7 +627,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [time.default]
-            gaps = [1, 2, 3, 4]
+            margins = [1, 2, 3, 4]
 
             [time.default.color]
             background = "#aabbcc"
@@ -636,7 +636,7 @@ mod tests {
         .unwrap();
 
         let t = config.time.get("default").unwrap();
-        assert_eq!(t.block.gaps, [1, 2, 3, 4]);
+        assert_eq!(t.block.margins, [1, 2, 3, 4]);
         assert_eq!(t.block.borders, [0, 0, 0, 0]);
         assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(t.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
@@ -765,7 +765,7 @@ mod tests {
             height = 64
 
             [battery.default]
-            gaps = [1, 2, 3, 4]
+            margins = [1, 2, 3, 4]
             "###,
         )
         .unwrap();

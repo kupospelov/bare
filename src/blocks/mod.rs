@@ -65,7 +65,7 @@ impl AsFd for Fd {
 
 pub trait Block {
     /// The block layout.
-    fn layout(&self, font_size: u32) -> crate::render::BlockLayout;
+    fn layout(&self, font_size: u32, scale: i32) -> crate::render::BlockLayout;
 
     /// The block colors.
     fn colors(&self) -> &ColorConfig;
@@ -101,6 +101,7 @@ pub trait Block {
     }
 
     /// React to an output scale change.
+    /// TODO: Replace with layout().
     fn set_scale(&mut self, _config: &Config, _scale: i32) {}
 }
 

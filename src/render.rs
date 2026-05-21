@@ -94,10 +94,10 @@ impl Renderer {
         border: Color,
     ) -> Region {
         let outer = Region {
-            x: region.x + config.gaps[3],
-            y: region.y + config.gaps[0],
-            w: (region.w as i32 - config.gaps[3] - config.gaps[1]).max(0) as u32,
-            h: (region.h as i32 - config.gaps[0] - config.gaps[2]).max(0) as u32,
+            x: region.x + config.margins[3],
+            y: region.y + config.margins[0],
+            w: (region.w as i32 - config.margins[3] - config.margins[1]).max(0) as u32,
+            h: (region.h as i32 - config.margins[0] - config.margins[2]).max(0) as u32,
         };
         let inner = Region {
             x: outer.x + config.borders[3],
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn draw_block_applies_gaps_and_borders() {
+    fn draw_block_applies_margins_and_borders() {
         let r = make_renderer();
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
         let mut map = Map::new(&mut buf, SIZE);
@@ -426,7 +426,7 @@ mod tests {
             h: SIZE,
         };
         let config = BlockConfig {
-            gaps: [1, 2, 3, 4],
+            margins: [1, 2, 3, 4],
             borders: [5, 6, 7, 8],
             height: None,
         };

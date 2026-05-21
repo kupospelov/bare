@@ -58,8 +58,11 @@ impl Output {
         self.layout = Layout {
             font_size,
             separator,
-            workspaces: self.workspace_group.layout(font_size),
-            blocks: blocks.iter().map(|b| b.layout(font_size)).collect(),
+            workspaces: self.workspace_group.layout(font_size, self.scale),
+            blocks: blocks
+                .iter()
+                .map(|b| b.layout(font_size, self.scale))
+                .collect(),
         };
     }
 }

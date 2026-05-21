@@ -35,7 +35,7 @@ impl Workspaces {
 }
 
 impl Block for Workspaces {
-    fn layout(&self, _font_size: u32) -> render::BlockLayout {
+    fn layout(&self, _font_size: u32, _scale: i32) -> render::BlockLayout {
         let height = self.items.len() as i32 * self.height;
         render::BlockLayout {
             content: height,
@@ -94,7 +94,9 @@ impl Block for Workspaces {
     }
 
     fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {
-        self.height = config.bar.width as i32 * scale;
         self.config = config.workspace.scaled(scale);
+        let margins = self.config.block.margins;
+        let width = config.bar.width as i32 * scale;
+        self.height = (width - margins[1] - margins[3]).max(0) + margins[0] + margins[2];
     }
 }

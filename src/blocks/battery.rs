@@ -106,19 +106,20 @@ fn open_uevent_socket() -> nix::Result<OwnedFd> {
 }
 
 impl Block for Battery {
-    fn layout(&self, font_size: u32) -> render::BlockLayout {
-        let margin = super::inner_margin(font_size);
+    fn layout(&self, font_size: u32, scale: i32) -> render::BlockLayout {
         let items = &self.config.format;
+        let separator = super::inner_margin(font_size);
         let gaps = items.len().saturating_sub(1) as i32;
         let height: i32 = items
             .iter()
             .map(|i| Self::item_height(i, font_size) as i32)
             .sum::<i32>()
-            + gaps * margin;
+            + gaps * separator;
+        let block = self.config.block.scaled(scale);
         render::BlockLayout {
             content: height,
-            height: self.config.block.height.unwrap_or(height),
-            config: self.config.block.clone(),
+            height: block.height.unwrap_or(height) + block.margins[0] + block.margins[2],
+            config: block,
         }
     }
 
