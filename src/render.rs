@@ -406,6 +406,8 @@ mod tests {
     const BG: Color = Color::rgb(0, 0, 0);
 
     fn make_renderer() -> Renderer {
+        crate::log::set(crate::log::Level::Error);
+
         let (font, size) = font::load("Sans Bold");
         Renderer::new(Rasterizer::new(font), size, BG)
     }

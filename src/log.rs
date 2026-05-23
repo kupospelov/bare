@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Debug,
@@ -6,10 +8,20 @@ pub enum Level {
     Error,
 }
 
+static LEVEL: OnceLock<Level> = OnceLock::new();
+
+pub fn get() -> Level {
+    LEVEL.get().copied().unwrap()
+}
+
+pub fn set(level: Level) {
+    let _ = LEVEL.set(level);
+}
+
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
-        if $level >= $crate::LOG_LEVEL {
+        if $level >= $crate::log::get() {
             eprintln!("[{:?}] {}", $level, format_args!($($arg)*));
         }
     };

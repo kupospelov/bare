@@ -11,12 +11,24 @@ mod wayland;
 
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
+use clap::Parser;
 use state::State;
 use wayland_client::Connection;
 
-const LOG_LEVEL: log::Level = log::Level::Debug;
+#[derive(Parser)]
+struct Arguments {
+    #[arg(short = 'd', long = "debug")]
+    debug: bool,
+}
 
 fn main() {
+    let args = Arguments::parse();
+    if args.debug {
+        log::set(log::Level::Debug);
+    } else {
+        log::set(log::Level::Warning);
+    }
+
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland compositor");
     let mut event_queue = conn.new_event_queue();
     let qh = event_queue.handle();
