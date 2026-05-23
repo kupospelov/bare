@@ -30,11 +30,7 @@ impl Default for BarConfig {
             font: "Sans Bold".into(),
             width: 28,
             separator: 14,
-            blocks: vec![
-                "volume.default".into(),
-                "battery.default".into(),
-                "time.default".into(),
-            ],
+            blocks: vec!["volume.0".into(), "battery.0".into(), "time.0".into()],
             color: ColorConfig {
                 text: Color::rgb(0x64, 0x64, 0x64),
                 background: Color::rgb(0x0, 0x0, 0x0),
@@ -283,7 +279,7 @@ mod shadow {
     use std::collections::HashMap;
 
     #[derive(Default, Deserialize)]
-    #[serde(default)]
+    #[serde(default, deny_unknown_fields)]
     pub(super) struct Config {
         pub bar: BarConfig,
         pub workspace: WorkspaceConfig,
@@ -293,7 +289,7 @@ mod shadow {
     }
 
     #[derive(Default, Deserialize)]
-    #[serde(default)]
+    #[serde(default, deny_unknown_fields)]
     pub(super) struct BarConfig {
         pub font: Option<String>,
         pub width: Option<u32>,
@@ -313,7 +309,7 @@ mod shadow {
     }
 
     #[derive(Default, Deserialize)]
-    #[serde(default)]
+    #[serde(default, deny_unknown_fields)]
     pub(super) struct WorkspaceStateConfig {
         pub color: ColorConfig,
     }
@@ -329,7 +325,7 @@ mod shadow {
     }
 
     #[derive(Default, Deserialize)]
-    #[serde(default)]
+    #[serde(default, deny_unknown_fields)]
     pub(super) struct VolumeStateConfig {
         pub color: ColorConfig,
     }
@@ -361,7 +357,7 @@ mod shadow {
     }
 
     #[derive(Default, Deserialize)]
-    #[serde(default)]
+    #[serde(default, deny_unknown_fields)]
     pub(super) struct ColorConfig {
         pub text: Option<Color>,
         pub background: Option<Color>,
@@ -515,10 +511,7 @@ mod tests {
         let b = config.bar;
         assert_eq!(b.width, 28);
         assert_eq!(b.separator, 14);
-        assert_eq!(
-            b.blocks,
-            ["volume.default", "battery.default", "time.default"]
-        );
+        assert_eq!(b.blocks, ["volume.0", "battery.0", "time.0"]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0, 0, 0));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
@@ -584,16 +577,16 @@ mod tests {
     fn volume_partial_override() {
         let config: Config = toml::from_str(
             r###"
-            [volume.default]
+            [volume.0]
             margins = [1, 2, 3, 4]
 
-            [volume.default.muted.color]
+            [volume.0.muted.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        let v = config.volume.get("default").unwrap();
+        let v = config.volume.get("0").unwrap();
         assert_eq!(v.block.margins, [1, 2, 3, 4]);
         assert_eq!(v.block.borders, [0, 0, 0, 0]);
         assert_eq!(v.muted.color.text, Color::rgb(0x32, 0x32, 0x32));
@@ -605,16 +598,16 @@ mod tests {
     fn battery_partial_override() {
         let config: Config = toml::from_str(
             r###"
-            [battery.default]
+            [battery.0]
             margins = [1, 2, 3, 4]
 
-            [battery.default.color]
+            [battery.0.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        let b = config.battery.get("default").unwrap();
+        let b = config.battery.get("0").unwrap();
         assert_eq!(b.block.margins, [1, 2, 3, 4]);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -626,16 +619,16 @@ mod tests {
     fn time_partial_override() {
         let config: Config = toml::from_str(
             r###"
-            [time.default]
+            [time.0]
             margins = [1, 2, 3, 4]
 
-            [time.default.color]
+            [time.0.color]
             background = "#aabbcc"
             "###,
         )
         .unwrap();
 
-        let t = config.time.get("default").unwrap();
+        let t = config.time.get("0").unwrap();
         assert_eq!(t.block.margins, [1, 2, 3, 4]);
         assert_eq!(t.block.borders, [0, 0, 0, 0]);
         assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -647,12 +640,12 @@ mod tests {
     fn time_format_default() {
         let config: Config = toml::from_str(
             r###"
-            [time.default]
+            [time.0]
             "###,
         )
         .unwrap();
 
-        let t = config.time.get("default").unwrap();
+        let t = config.time.get("0").unwrap();
         assert_eq!(t.format, vec![TimeFormatItem::Hour, TimeFormatItem::Minute]);
     }
 
@@ -660,13 +653,13 @@ mod tests {
     fn time_format_parses_tokens_and_labels() {
         let config: Config = toml::from_str(
             r###"
-            [time.default]
+            [time.0]
             format = ["[hour]", "[minute]", "[day]", "[month]", "hello"]
             "###,
         )
         .unwrap();
 
-        let t = config.time.get("default").unwrap();
+        let t = config.time.get("0").unwrap();
         assert_eq!(
             t.format,
             vec![
@@ -683,12 +676,12 @@ mod tests {
     fn volume_format_default() {
         let config: Config = toml::from_str(
             r###"
-            [volume.default]
+            [volume.0]
             "###,
         )
         .unwrap();
 
-        let v = config.volume.get("default").unwrap();
+        let v = config.volume.get("0").unwrap();
         assert_eq!(
             v.format,
             vec![
@@ -702,13 +695,13 @@ mod tests {
     fn volume_format_parses_tokens_and_labels() {
         let config: Config = toml::from_str(
             r###"
-            [volume.default]
+            [volume.0]
             format = ["[volume]", "hello"]
             "###,
         )
         .unwrap();
 
-        let v = config.volume.get("default").unwrap();
+        let v = config.volume.get("0").unwrap();
         assert_eq!(
             v.format,
             vec![
@@ -722,12 +715,12 @@ mod tests {
     fn battery_format_default() {
         let config: Config = toml::from_str(
             r###"
-            [battery.default]
+            [battery.0]
             "###,
         )
         .unwrap();
 
-        let b = config.battery.get("default").unwrap();
+        let b = config.battery.get("0").unwrap();
         assert_eq!(
             b.format,
             vec![
@@ -741,13 +734,13 @@ mod tests {
     fn battery_format_parses_tokens_and_labels() {
         let config: Config = toml::from_str(
             r###"
-            [battery.default]
+            [battery.0]
             format = ["[capacity]", "hello"]
             "###,
         )
         .unwrap();
 
-        let b = config.battery.get("default").unwrap();
+        let b = config.battery.get("0").unwrap();
         assert_eq!(
             b.format,
             vec![
@@ -761,17 +754,17 @@ mod tests {
     fn block_height_override() {
         let config: Config = toml::from_str(
             r###"
-            [time.default]
+            [time.0]
             height = 64
 
-            [battery.default]
+            [battery.0]
             margins = [1, 2, 3, 4]
             "###,
         )
         .unwrap();
 
-        assert_eq!(config.time.get("default").unwrap().block.height, Some(64));
-        assert_eq!(config.battery.get("default").unwrap().block.height, None);
+        assert_eq!(config.time.get("0").unwrap().block.height, Some(64));
+        assert_eq!(config.battery.get("0").unwrap().block.height, None);
     }
 
     #[test]
@@ -783,9 +776,9 @@ mod tests {
             background = "#334455"
             border = "#667788"
 
-            [volume.default]
-            [battery.default]
-            [time.default]
+            [volume.0]
+            [battery.0]
+            [time.0]
             "###,
         )
         .unwrap();
@@ -795,11 +788,11 @@ mod tests {
             background: Color::rgb(0x33, 0x44, 0x55),
             border: Color::rgb(0x66, 0x77, 0x88),
         };
-        assert_eq!(config.volume.get("default").unwrap().color, bar_color);
-        assert_eq!(config.battery.get("default").unwrap().color, bar_color);
-        assert_eq!(config.time.get("default").unwrap().color, bar_color);
+        assert_eq!(config.volume.get("0").unwrap().color, bar_color);
+        assert_eq!(config.battery.get("0").unwrap().color, bar_color);
+        assert_eq!(config.time.get("0").unwrap().color, bar_color);
         assert_eq!(
-            config.volume.get("default").unwrap().muted.color,
+            config.volume.get("0").unwrap().muted.color,
             ColorConfig {
                 text: Color::rgb(0x32, 0x32, 0x32),
                 ..bar_color
@@ -816,13 +809,13 @@ mod tests {
             background = "#334455"
             border = "#667788"
 
-            [volume.default.color]
+            [volume.0.color]
             text = "#111111"
 
-            [time.default.color]
+            [time.0.color]
             background = "#222222"
 
-            [battery.default.color]
+            [battery.0.color]
             border = "#333333"
             "###,
         )
@@ -834,21 +827,21 @@ mod tests {
             border: Color::rgb(0x66, 0x77, 0x88),
         };
         assert_eq!(
-            config.volume.get("default").unwrap().color,
+            config.volume.get("0").unwrap().color,
             ColorConfig {
                 text: Color::rgb(0x11, 0x11, 0x11),
                 ..bar_color
             }
         );
         assert_eq!(
-            config.time.get("default").unwrap().color,
+            config.time.get("0").unwrap().color,
             ColorConfig {
                 background: Color::rgb(0x22, 0x22, 0x22),
                 ..bar_color
             }
         );
         assert_eq!(
-            config.battery.get("default").unwrap().color,
+            config.battery.get("0").unwrap().color,
             ColorConfig {
                 border: Color::rgb(0x33, 0x33, 0x33),
                 ..bar_color
