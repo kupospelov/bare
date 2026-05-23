@@ -81,10 +81,6 @@ impl Output {
         self.mark_dirty(Range::new(0, self.physical_height()));
     }
 
-    pub fn workspaces_range(&self) -> Range {
-        Range::new(0, self.workspace_group.height())
-    }
-
     pub fn block_range(&self, i: usize) -> Range {
         let separator = self.layout.separator as i32;
         let mut y = self.physical_height();

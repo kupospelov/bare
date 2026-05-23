@@ -1,5 +1,5 @@
 use crate::config::WorkspaceConfig;
-use crate::render::{self, Renderer};
+use crate::render::{self, Range, Renderer};
 use crate::state::Workspace;
 use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
 
@@ -42,10 +42,17 @@ impl Workspaces {
         map: &mut render::Map<'_>,
         region: render::Region,
         font_size: u32,
+        dirty: Range,
     ) {
         self.y_start = region.y;
         let mut y = region.y;
         for ws in &self.items {
+            let range = Range::new(y, y + self.height);
+            if !dirty.overlaps(range) {
+                y += self.height;
+                continue;
+            }
+
             let state = if ws.active {
                 &self.config.active
             } else if ws.urgent {
@@ -78,6 +85,12 @@ impl Workspaces {
             }
             y += self.height;
         }
+    }
+
+    pub fn update(&mut self, items: Vec<Workspace>) -> Option<Range> {
+        let dirty = crate::damage::arrays(&self.items, &items, self.height);
+        self.items = items;
+        dirty
     }
 
     pub fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {

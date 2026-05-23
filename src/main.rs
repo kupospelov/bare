@@ -1,6 +1,7 @@
 mod blocks;
 mod color;
 mod config;
+mod damage;
 mod font;
 mod log;
 mod raster;

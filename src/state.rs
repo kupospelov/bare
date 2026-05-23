@@ -32,6 +32,12 @@ pub struct Workspace {
     pub urgent: bool,
 }
 
+impl PartialEq for Workspace {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.active == other.active && self.urgent == other.urgent
+    }
+}
+
 #[derive(Default)]
 pub struct Group {
     pub workspaces: Vec<ObjectId>,
@@ -149,16 +155,6 @@ impl State {
                 "Output {}: mark block {} dirty: {}",
                 output_id, block_idx, range
             );
-            output.mark_dirty(range);
-        }
-    }
-
-    fn mark_all_outputs_workspaces_dirty(&mut self) {
-        for output in self.outputs.values_mut() {
-            let range = output.workspaces_range();
-            let output_id = output.output.id();
-
-            debug!("Output {}: mark workspaces dirty: {}", output_id, range);
             output.mark_dirty(range);
         }
     }
@@ -567,12 +563,11 @@ fn rebuild_workspaces(state: &mut State) {
                 })
         };
         if let Some(ws) = ws {
-            state
-                .outputs
-                .get_mut(&output_id)
-                .unwrap()
-                .workspace_group
-                .items = ws;
+            let output = state.outputs.get_mut(&output_id).unwrap();
+            if let Some(range) = output.workspace_group.update(ws) {
+                debug!("Output {}: mark workspaces dirty: {}", output_id, range);
+                output.mark_dirty(range);
+            }
         }
     }
 }
@@ -623,12 +618,7 @@ impl Dispatch<ext_workspace_manager_v1::ExtWorkspaceManagerV1, ()> for State {
             let id = handle.id();
             debug!("Workspace manager {} done", id);
 
-            // Mark the previous range dirty in case workspaces shrink.
-            state.mark_all_outputs_workspaces_dirty();
-
-            // TODO: Only mark affected outputs.
             rebuild_workspaces(state);
-            state.mark_all_outputs_workspaces_dirty();
         }
     }
 

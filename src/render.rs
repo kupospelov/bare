@@ -33,6 +33,10 @@ impl Range {
         self.start <= other.start && self.end >= other.end
     }
 
+    pub fn overlaps(&self, other: Range) -> bool {
+        self.start < other.end && other.start < self.end
+    }
+
     pub fn union(self, other: Range) -> Range {
         Range {
             start: self.start.min(other.start),
@@ -320,7 +324,7 @@ impl Renderer {
 
         let font_size = output.layout.font_size;
         let ws_height = output.workspace_group.height();
-        if dirty.contains(Range::new(0, ws_height)) {
+        if dirty.overlaps(Range::new(0, ws_height)) {
             debug!("Output {}: rendering workspaces", output_id);
             output.workspace_group.render(
                 self,
@@ -332,6 +336,7 @@ impl Renderer {
                     h: ws_height.max(0) as u32,
                 },
                 font_size,
+                dirty,
             );
         }
 
@@ -341,7 +346,7 @@ impl Renderer {
             y -= layout.height;
 
             let range = Range::new(y, y + layout.height);
-            if dirty.contains(range) {
+            if dirty.overlaps(range) {
                 debug!("Output {}: rendering block {}", output_id, range);
                 let colors = block.colors();
                 let inner = self.draw_block(
