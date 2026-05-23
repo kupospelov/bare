@@ -27,7 +27,7 @@ pub struct BarConfig {
 impl Default for BarConfig {
     fn default() -> Self {
         Self {
-            font: "Sans Bold".into(),
+            font: "Sans Bold 9".into(),
             width: 28,
             separator: 14,
             blocks: vec!["volume.0".into(), "battery.0".into(), "time.0".into()],
@@ -96,8 +96,9 @@ impl WorkspaceConfig {
     pub(crate) fn default() -> Self {
         Self {
             block: BlockConfig {
-                height: 28,
-                ..BlockConfig::default()
+                height: 26,
+                borders: [1, 1, 1, 1],
+                margins: [0, 2, 2, 0],
             },
             active: WorkspaceStateConfig {
                 color: ColorConfig {
@@ -116,8 +117,8 @@ impl WorkspaceConfig {
             urgent: WorkspaceStateConfig {
                 color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
-                    background: Color::rgb(0x90, 0, 0),
-                    border: Color::rgb(0x2f, 0x34, 0x3a),
+                    background: Color::rgb(0x77, 0x28, 0x2d),
+                    border: Color::rgb(0x99, 0x4c, 0x4c),
                 },
             },
         }
@@ -144,7 +145,7 @@ impl VolumeConfig {
             color: color.clone(),
             muted: VolumeStateConfig {
                 color: ColorConfig {
-                    text: Color::rgb(0x32, 0x32, 0x32),
+                    text: Color::rgb(0xdf, 0xaf, 0x8f),
                     ..*color
                 },
             },
@@ -525,9 +526,9 @@ mod tests {
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
 
         let w = config.workspace;
-        assert_eq!(w.block.margins, [0, 0, 0, 0]);
-        assert_eq!(w.block.borders, [0, 0, 0, 0]);
-        assert_eq!(w.block.height, 28);
+        assert_eq!(w.block.borders, [1, 1, 1, 1]);
+        assert_eq!(w.block.margins, [0, 2, 2, 0]);
+        assert_eq!(w.block.height, 26);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));
         assert_eq!(w.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
@@ -535,8 +536,8 @@ mod tests {
         assert_eq!(w.inactive.color.background, Color::rgb(0x22, 0x22, 0x22));
         assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
         assert_eq!(w.urgent.color.text, Color::rgb(0xff, 0xff, 0xff));
-        assert_eq!(w.urgent.color.background, Color::rgb(0x90, 0, 0));
-        assert_eq!(w.urgent.color.border, Color::rgb(0x2f, 0x34, 0x3a));
+        assert_eq!(w.urgent.color.background, Color::rgb(0x77, 0x28, 0x2d));
+        assert_eq!(w.urgent.color.border, Color::rgb(0x99, 0x4c, 0x4c));
 
         // Maps are not auto-populated.
         assert_eq!(config.volume.len(), 0);
@@ -575,8 +576,8 @@ mod tests {
         .unwrap();
 
         let w = config.workspace;
+        assert_eq!(w.block.borders, [1, 1, 1, 1]);
         assert_eq!(w.block.margins, [10, 20, 30, 40]);
-        assert_eq!(w.block.borders, [0, 0, 0, 0]);
         assert_eq!(w.block.height, 50);
         assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
@@ -599,7 +600,7 @@ mod tests {
         let v = config.volume.get("0").unwrap();
         assert_eq!(v.block.margins, [1, 2, 3, 4]);
         assert_eq!(v.block.borders, [0, 0, 0, 0]);
-        assert_eq!(v.muted.color.text, Color::rgb(0x32, 0x32, 0x32));
+        assert_eq!(v.muted.color.text, Color::rgb(0xdf, 0xaf, 0x8f));
         assert_eq!(v.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(v.muted.color.border, Color::rgb(0, 0, 0));
     }
@@ -814,7 +815,7 @@ mod tests {
         assert_eq!(
             config.volume.get("0").unwrap().muted.color,
             ColorConfig {
-                text: Color::rgb(0x32, 0x32, 0x32),
+                text: Color::rgb(0xdf, 0xaf, 0x8f),
                 ..bar_color
             }
         );

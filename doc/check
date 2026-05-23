@@ -1,0 +1,5 @@
+#!/bin/sh -e
+
+cd "$(dirname "$0")"
+
+awk 'length > 80 {print FILENAME ":" NR ": Line is too long"; err = 1} END {exit err}' *.scd

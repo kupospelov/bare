@@ -23,6 +23,9 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Check man pages
+        run: ./doc/check
+
       - name: Run rustfmt
         run: cargo fmt --all -- --check
 
