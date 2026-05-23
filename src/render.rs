@@ -377,9 +377,12 @@ impl Renderer {
         buffer.back = 1 - buffer.back;
         output.surface.set_buffer_scale(scale);
         output.surface.attach(Some(wl_buffer), 0, 0);
-        output
-            .surface
-            .damage(0, 0, logical_width as i32, logical_height as i32);
+        output.surface.damage_buffer(
+            0,
+            dirty.start,
+            physical_width as i32,
+            dirty.end - dirty.start,
+        );
         output.surface.commit();
         output.dirty = None;
         debug!("Output {}: rendering done", output_id);

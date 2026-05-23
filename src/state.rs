@@ -228,7 +228,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
             } => match &interface[..] {
                 "wl_compositor" => {
                     state.compositor =
-                        Some(registry.bind::<wl_compositor::WlCompositor, _, _>(name, 3, qh, ()));
+                        Some(registry.bind::<wl_compositor::WlCompositor, _, _>(name, 4, qh, ()));
                 }
                 "wl_shm" => {
                     state.shm = Some(registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ()));
