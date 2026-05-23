@@ -1,5 +1,4 @@
-use super::Block;
-use crate::config::{BlockConfig, WorkspaceConfig};
+use crate::config::WorkspaceConfig;
 use crate::render::{self, Renderer};
 use crate::state::Workspace;
 use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
@@ -21,6 +20,10 @@ impl Workspaces {
         }
     }
 
+    pub fn height(&self) -> i32 {
+        self.items.len() as i32 * self.height
+    }
+
     pub fn handle_at(&self, y: i32) -> Option<&ext_workspace_handle_v1::ExtWorkspaceHandleV1> {
         if self.height == 0 {
             return None;
@@ -32,24 +35,8 @@ impl Workspaces {
             None
         }
     }
-}
 
-impl Block for Workspaces {
-    fn layout(&self, _font_size: u32, _scale: i32) -> render::BlockLayout {
-        let height = self.items.len() as i32 * self.height;
-        render::BlockLayout {
-            content: height,
-            height,
-            config: BlockConfig::default(),
-        }
-    }
-
-    fn colors(&self) -> &crate::config::ColorConfig {
-        // Ignored. Per-workspace colors are used instead.
-        &self.config.inactive.color
-    }
-
-    fn render(
+    pub fn render(
         &mut self,
         renderer: &mut Renderer,
         map: &mut render::Map<'_>,
@@ -93,7 +80,7 @@ impl Block for Workspaces {
         }
     }
 
-    fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {
+    pub fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {
         self.config = config.workspace.scaled(scale);
         let margins = self.config.block.margins;
         let width = config.bar.width as i32 * scale;

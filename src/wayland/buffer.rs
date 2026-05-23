@@ -1,3 +1,4 @@
+use crate::render::Range;
 use crate::{debug, info};
 use nix::sys::memfd::{MFdFlags, memfd_create};
 use std::fs::File;
@@ -10,6 +11,7 @@ pub struct Buffer {
     pub _pool: WlShmPool,
     pub buffers: [wl_buffer::WlBuffer; 2],
     pub released: [bool; 2],
+    pub damage: [Range; 2],
     pub mmap: memmap2::MmapMut,
     pub frame_size: usize,
     pub back: usize,
@@ -52,14 +54,31 @@ impl Buffer {
         );
 
         let mmap = unsafe { memmap2::MmapMut::map_mut(&file).unwrap() };
+        let full = Range::new(0, physical_height as i32);
         Self {
             _pool: pool,
             buffers: [buf0, buf1],
             released: [true, true],
+            damage: [full, full],
             mmap,
             frame_size,
             back: 0,
         }
+    }
+
+    pub fn copy_to_back(&mut self, range: Range, stride: usize) {
+        if range.end <= range.start {
+            return;
+        }
+        let start = range.start as usize * stride;
+        let end = range.end as usize * stride;
+        let (first, second) = self.mmap.split_at_mut(self.frame_size);
+        let (dst, src) = if self.back == 0 {
+            (first, &second[..])
+        } else {
+            (second, &first[..])
+        };
+        dst[start..end].copy_from_slice(&src[start..end]);
     }
 }
 

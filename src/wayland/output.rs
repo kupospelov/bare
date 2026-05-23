@@ -2,7 +2,7 @@ use crate::blocks;
 use crate::blocks::Block;
 use crate::config::WorkspaceConfig;
 use crate::debug;
-use crate::render::Layout;
+use crate::render::{Layout, Range};
 use crate::wayland::buffer::Buffer;
 use wayland_client::{
     backend::ObjectId,
@@ -23,7 +23,7 @@ pub struct Output {
     pub workspace_group: blocks::workspaces::Workspaces,
     pub layout: Layout,
     pub buffer: Option<Buffer>,
-    pub render: bool,
+    pub dirty: Option<Range>,
 }
 
 impl Output {
@@ -48,7 +48,7 @@ impl Output {
             workspace_group: blocks::workspaces::Workspaces::new(width as i32, workspace),
             layout: Layout::default(),
             buffer: None,
-            render: false,
+            dirty: None,
         }
     }
 
@@ -58,12 +58,42 @@ impl Output {
         self.layout = Layout {
             font_size,
             separator,
-            workspaces: self.workspace_group.layout(font_size, self.scale),
             blocks: blocks
                 .iter()
                 .map(|b| b.layout(font_size, self.scale))
                 .collect(),
         };
+    }
+
+    pub fn physical_height(&self) -> i32 {
+        self.height as i32 * self.scale
+    }
+
+    pub fn mark_dirty(&mut self, range: Range) {
+        self.dirty = Some(match self.dirty {
+            Some(d) => d.union(range),
+            None => range,
+        });
+    }
+
+    pub fn mark_full_dirty(&mut self) {
+        debug!("Mark full bar dirty");
+        self.mark_dirty(Range::new(0, self.physical_height()));
+    }
+
+    pub fn workspaces_range(&self) -> Range {
+        Range::new(0, self.workspace_group.height())
+    }
+
+    pub fn block_range(&self, i: usize) -> Range {
+        let separator = self.layout.separator as i32;
+        let mut y = self.physical_height();
+        for j in 0..i {
+            y -= self.layout.blocks[j].height + separator;
+        }
+        let height = self.layout.blocks[i].height;
+        y -= height;
+        Range::new(y, y + height)
     }
 }
 

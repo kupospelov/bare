@@ -140,9 +140,26 @@ impl State {
         }
     }
 
-    fn mark_all_outputs_dirty(&mut self) {
+    fn mark_all_outputs_block_dirty(&mut self, block_idx: usize) {
         for output in self.outputs.values_mut() {
-            output.render = true;
+            let range = output.block_range(block_idx);
+            let output_id = output.output.id();
+
+            debug!(
+                "Output {}: mark block {} dirty: {}",
+                output_id, block_idx, range
+            );
+            output.mark_dirty(range);
+        }
+    }
+
+    fn mark_all_outputs_workspaces_dirty(&mut self) {
+        for output in self.outputs.values_mut() {
+            let range = output.workspaces_range();
+            let output_id = output.output.id();
+
+            debug!("Output {}: mark workspaces dirty: {}", output_id, range);
+            output.mark_dirty(range);
         }
     }
 
@@ -150,7 +167,7 @@ impl State {
         let outputs_to_render: Vec<ObjectId> = self
             .outputs
             .iter()
-            .filter(|(_, o)| o.configured && o.render)
+            .filter(|(_, o)| o.configured)
             .map(|(id, _)| id.clone())
             .collect();
         if !outputs_to_render.is_empty() {
@@ -172,7 +189,7 @@ impl State {
                 handle
                     .insert_source(fd, move |_readiness, _fd, state| {
                         if state.blocks[i].on_fd() {
-                            state.mark_all_outputs_dirty();
+                            state.mark_all_outputs_block_dirty(i);
                         }
                         Ok(calloop::PostAction::Continue)
                     })
@@ -187,7 +204,7 @@ impl State {
             handle
                 .insert_source(timer, move |_, _, state| {
                     if state.blocks[i].update() {
-                        state.mark_all_outputs_dirty();
+                        state.mark_all_outputs_block_dirty(i);
                     }
                     state.blocks[i].reschedule()
                 })
@@ -413,7 +430,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                 if let Some(o) = state.outputs.get_mut(&output.id()) {
                     debug!("Output {}: done", id);
 
-                    o.render = true;
+                    o.mark_full_dirty();
                 }
             }
             _ => {}
@@ -585,7 +602,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for State {
                     output.height = height;
                     output.configured = true;
                     output.surface.commit();
-                    output.render = true;
+                    output.mark_full_dirty();
                     break;
                 }
             }
@@ -606,9 +623,12 @@ impl Dispatch<ext_workspace_manager_v1::ExtWorkspaceManagerV1, ()> for State {
             let id = handle.id();
             debug!("Workspace manager {} done", id);
 
+            // Mark the previous range dirty in case workspaces shrink.
+            state.mark_all_outputs_workspaces_dirty();
+
             // TODO: Only mark affected outputs.
             rebuild_workspaces(state);
-            state.mark_all_outputs_dirty();
+            state.mark_all_outputs_workspaces_dirty();
         }
     }
 

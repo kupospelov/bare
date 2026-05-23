@@ -99,10 +99,6 @@ pub trait Block {
     fn on_fd(&mut self) -> bool {
         false
     }
-
-    /// React to an output scale change.
-    /// TODO: Replace with layout().
-    fn set_scale(&mut self, _config: &Config, _scale: i32) {}
 }
 
 #[cfg(test)]

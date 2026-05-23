@@ -5,6 +5,7 @@ use crate::raster::Rasterizer;
 use crate::wayland::buffer::Buffer;
 use crate::wayland::output::Output;
 use crate::{debug, info};
+use std::fmt;
 use wayland_client::QueueHandle;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
@@ -15,6 +16,42 @@ pub struct Region {
     pub y: i32,
     pub w: u32,
     pub h: u32,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct Range {
+    pub start: i32,
+    pub end: i32,
+}
+
+impl Range {
+    pub fn new(start: i32, end: i32) -> Self {
+        Self { start, end }
+    }
+
+    pub fn contains(&self, other: Range) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
+
+    pub fn union(self, other: Range) -> Range {
+        Range {
+            start: self.start.min(other.start),
+            end: self.end.max(other.end),
+        }
+    }
+
+    pub fn clamp(self, bounds: Range) -> Range {
+        Range {
+            start: self.start.max(bounds.start),
+            end: self.end.min(bounds.end),
+        }
+    }
+}
+
+impl fmt::Display for Range {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
 }
 
 #[derive(Default)]
@@ -28,7 +65,6 @@ pub struct BlockLayout {
 pub struct Layout {
     pub font_size: u32,
     pub separator: u32,
-    pub workspaces: BlockLayout,
     pub blocks: Vec<BlockLayout>,
 }
 
@@ -48,10 +84,14 @@ impl<'a> Map<'a> {
         }
     }
 
-    pub fn clear(&mut self, color: Color) {
+    pub fn clear(&mut self, range: Range, color: Color) {
+        if range.end <= range.start {
+            return;
+        }
+        let stride = self.width as usize;
         let bgra = color.bgra();
         let (chunks, _) = self.data.as_chunks_mut::<4>();
-        chunks.fill(bgra);
+        chunks[range.start as usize * stride..range.end as usize * stride].fill(bgra);
     }
 }
 
@@ -234,6 +274,11 @@ impl Renderer {
         qh: &QueueHandle<crate::State>,
         blocks: &mut [Box<dyn Block>],
     ) {
+        let Some(mut dirty) = output.dirty else {
+            return;
+        };
+
+        debug!("Output {}: render dirty region: {}", output_id, dirty);
         let logical_width = output.width;
         let logical_height = output.height;
         let scale = output.scale;
@@ -252,6 +297,9 @@ impl Renderer {
                 shm,
                 qh,
             ));
+            dirty = Range::new(0, physical_height as i32);
+        } else {
+            dirty = dirty.clamp(Range::new(0, physical_height as i32));
         }
 
         let buffer = output.buffer.as_mut().unwrap();
@@ -260,56 +308,70 @@ impl Renderer {
             return;
         }
 
+        let prev = buffer.damage[1 - buffer.back];
+        if !dirty.contains(prev) {
+            buffer.copy_to_back(prev, stride as usize);
+        }
+
         let bg_color = self.bg_color;
         let start = buffer.back * frame_size;
         let mut map = Map::new(&mut buffer.mmap[start..start + frame_size], physical_height);
-        map.clear(bg_color);
+        map.clear(dirty, bg_color);
 
         let font_size = output.layout.font_size;
-        let layout = &output.layout.workspaces;
-        output.workspace_group.render(
-            self,
-            &mut map,
-            Region {
-                x: 0,
-                y: 0,
-                w: physical_width,
-                h: layout.height.max(0) as u32,
-            },
-            font_size,
-        );
+        let ws_height = output.workspace_group.height();
+        if dirty.contains(Range::new(0, ws_height)) {
+            debug!("Output {}: rendering workspaces", output_id);
+            output.workspace_group.render(
+                self,
+                &mut map,
+                Region {
+                    x: 0,
+                    y: 0,
+                    w: physical_width,
+                    h: ws_height.max(0) as u32,
+                },
+                font_size,
+            );
+        }
 
         let mut y = physical_height as i32;
         for (i, block) in blocks.iter_mut().enumerate() {
             let layout = &output.layout.blocks[i];
-            let colors = block.colors();
             y -= layout.height;
-            let inner = self.draw_block(
-                &mut map,
-                Region {
-                    x: 0,
-                    y,
-                    w: physical_width,
-                    h: layout.height.max(0) as u32,
-                },
-                &layout.config,
-                colors.background,
-                colors.border,
-            );
-            block.render(
-                self,
-                &mut map,
-                Region {
-                    x: inner.x,
-                    y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,
-                    w: inner.w,
-                    h: layout.content.max(0) as u32,
-                },
-                font_size,
-            );
+
+            let range = Range::new(y, y + layout.height);
+            if dirty.contains(range) {
+                debug!("Output {}: rendering block {}", output_id, range);
+                let colors = block.colors();
+                let inner = self.draw_block(
+                    &mut map,
+                    Region {
+                        x: 0,
+                        y,
+                        w: physical_width,
+                        h: layout.height.max(0) as u32,
+                    },
+                    &layout.config,
+                    colors.background,
+                    colors.border,
+                );
+                block.render(
+                    self,
+                    &mut map,
+                    Region {
+                        x: inner.x,
+                        y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,
+                        w: inner.w,
+                        h: layout.content.max(0) as u32,
+                    },
+                    font_size,
+                );
+            }
             y -= output.layout.separator as i32;
         }
 
+        buffer.damage[buffer.back] = dirty;
         buffer.released[buffer.back] = false;
         let wl_buffer = &buffer.buffers[buffer.back];
         buffer.back = 1 - buffer.back;
@@ -319,7 +381,7 @@ impl Renderer {
             .surface
             .damage(0, 0, logical_width as i32, logical_height as i32);
         output.surface.commit();
-        output.render = false;
+        output.dirty = None;
         debug!("Output {}: rendering done", output_id);
     }
 }
