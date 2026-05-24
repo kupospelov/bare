@@ -9,6 +9,7 @@ use std::os::fd::{AsRawFd, OwnedFd};
 
 pub struct Battery {
     pub capacity: String,
+    name: String,
     socket: OwnedFd,
     config: BatteryConfig,
 }
@@ -18,14 +19,19 @@ impl Battery {
         let socket = open_uevent_socket().expect("Failed to open uevent socket");
         let mut battery = Self {
             capacity: String::new(),
+            name: String::new(),
             socket,
             config: config.clone(),
         };
         match std::fs::read(&battery.config.path) {
             Ok(bytes) => {
-                if let Some(c) = parse_capacity(bytes.split(|&b| b == b'\n')) {
-                    battery.set_capacity(c);
-                }
+                let event = parse_event(bytes.split(|&b| b == b'\n'));
+                battery.name = event.name.expect("No POWER_SUPPLY_NAME in the uevent file");
+                battery.set_capacity(
+                    event
+                        .capacity
+                        .expect("No POWER_SUPPLY_CAPACITY in the uevent file"),
+                );
             }
             Err(e) => error!("Failed to read uevent file: {}", e),
         }
@@ -67,8 +73,20 @@ impl Battery {
         loop {
             match socket::recv(self.socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
                 Ok(n) => {
-                    if let Some(c) = parse_capacity(buf[..n].split(|&b| b == 0)) {
+                    let event = parse_event(buf[..n].split(|&b| b == 0));
+                    let Some(name) = event.name else {
+                        continue;
+                    };
+
+                    if self.name != name {
+                        debug!("Battery {}: skipping", name);
+                        continue;
+                    }
+
+                    if let Some(c) = event.capacity {
                         redraw |= self.set_capacity(c);
+                    } else {
+                        debug!("Battery {}: no reported capacity", name);
                     }
                 }
                 Err(nix::errno::Errno::EAGAIN) => break,
@@ -82,14 +100,22 @@ impl Battery {
     }
 }
 
-fn parse_capacity<'a>(fields: impl Iterator<Item = &'a [u8]>) -> Option<String> {
+struct Event {
+    name: Option<String>,
+    capacity: Option<String>,
+}
+
+fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>) -> Event {
+    let mut name = None;
+    let mut capacity = None;
     for f in fields {
-        if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_CAPACITY=") {
-            return std::str::from_utf8(v).ok().map(str::to_owned);
+        if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
+            name = std::str::from_utf8(v).ok().map(str::to_owned);
+        } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_CAPACITY=") {
+            capacity = std::str::from_utf8(v).ok().map(str::to_owned);
         }
     }
-
-    None
+    Event { name, capacity }
 }
 
 fn open_uevent_socket() -> nix::Result<OwnedFd> {
