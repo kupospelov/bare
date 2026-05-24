@@ -169,6 +169,7 @@ impl VolumeFormatItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatteryConfig {
+    pub path: PathBuf,
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<BatteryFormatItem>,
@@ -177,6 +178,7 @@ pub struct BatteryConfig {
 impl BatteryConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
+            path: "/sys/class/power_supply/BAT0/uevent".into(),
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![
@@ -333,6 +335,7 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct BatteryConfig {
+        pub path: Option<std::path::PathBuf>,
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -403,6 +406,7 @@ mod shadow {
     impl BatteryConfig {
         pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
             super::BatteryConfig {
+                path: self.path.unwrap_or_else(|| default.path.clone()),
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
                 format: self
@@ -595,10 +599,37 @@ mod tests {
     }
 
     #[test]
+    fn battery_defaults() {
+        let config: Config = toml::from_str(
+            r###"
+            [battery.0]
+            "###,
+        )
+        .unwrap();
+
+        let b = config.battery.get("0").unwrap();
+        assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT0/uevent"));
+        assert_eq!(b.block.height, None);
+        assert_eq!(b.block.borders, [0, 0, 0, 0]);
+        assert_eq!(b.block.margins, [0, 0, 0, 0]);
+        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(
+            b.format,
+            vec![
+                BatteryFormatItem::Label("BAT".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+    }
+
+    #[test]
     fn battery_partial_override() {
         let config: Config = toml::from_str(
             r###"
             [battery.0]
+            path = "/sys/class/power_supply/BAT1/uevent"
             margins = [1, 2, 3, 4]
 
             [battery.0.color]
@@ -608,8 +639,10 @@ mod tests {
         .unwrap();
 
         let b = config.battery.get("0").unwrap();
-        assert_eq!(b.block.margins, [1, 2, 3, 4]);
+        assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT1/uevent"));
+        assert_eq!(b.block.height, None);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
+        assert_eq!(b.block.margins, [1, 2, 3, 4]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
@@ -707,25 +740,6 @@ mod tests {
             vec![
                 VolumeFormatItem::Volume,
                 VolumeFormatItem::Label("hello".into()),
-            ]
-        );
-    }
-
-    #[test]
-    fn battery_format_default() {
-        let config: Config = toml::from_str(
-            r###"
-            [battery.0]
-            "###,
-        )
-        .unwrap();
-
-        let b = config.battery.get("0").unwrap();
-        assert_eq!(
-            b.format,
-            vec![
-                BatteryFormatItem::Label("BAT".into()),
-                BatteryFormatItem::Capacity,
             ]
         );
     }

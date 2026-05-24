@@ -7,8 +7,6 @@ use nix::sys::socket::{
 };
 use std::os::fd::{AsRawFd, OwnedFd};
 
-const BATTERY_UEVENT_PATH: &str = "/sys/class/power_supply/BAT0/uevent";
-
 pub struct Battery {
     pub capacity: String,
     socket: OwnedFd,
@@ -23,7 +21,7 @@ impl Battery {
             socket,
             config: config.clone(),
         };
-        match std::fs::read(BATTERY_UEVENT_PATH) {
+        match std::fs::read(&battery.config.path) {
             Ok(bytes) => {
                 if let Some(c) = parse_capacity(bytes.split(|&b| b == b'\n')) {
                     battery.set_capacity(c);
