@@ -7,6 +7,18 @@ use nix::sys::socket::{
 };
 use std::os::fd::{AsRawFd, OwnedFd};
 
+pub struct Group {
+    pub instances: Vec<Battery>,
+}
+
+impl Group {
+    pub fn new() -> Self {
+        Self {
+            instances: Vec::new(),
+        }
+    }
+}
+
 pub struct Battery {
     pub capacity: String,
     name: String,

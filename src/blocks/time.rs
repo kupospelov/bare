@@ -3,6 +3,18 @@ use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
 use crate::render;
 use crate::{debug, error};
 
+pub struct Group {
+    pub instances: Vec<Time>,
+}
+
+impl Group {
+    pub fn new() -> Self {
+        Self {
+            instances: Vec::new(),
+        }
+    }
+}
+
 pub struct Time {
     now: time::OffsetDateTime,
     config: TimeConfig,

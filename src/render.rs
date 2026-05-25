@@ -1,4 +1,4 @@
-use crate::blocks::Block;
+use crate::blocks::Blocks;
 use crate::color::Color;
 use crate::config::BlockConfig;
 use crate::raster::Rasterizer;
@@ -276,7 +276,7 @@ impl Renderer {
         output: &mut Output,
         shm: &wl_shm::WlShm,
         qh: &QueueHandle<crate::State>,
-        blocks: &mut [Box<dyn Block>],
+        blocks: &mut Blocks,
     ) {
         let Some(mut dirty) = output.dirty else {
             return;
@@ -341,13 +341,14 @@ impl Renderer {
         }
 
         let mut y = physical_height as i32;
-        for (i, block) in blocks.iter_mut().enumerate() {
+        for i in 0..blocks.order.len() {
             let layout = &output.layout.blocks[i];
             y -= layout.height;
 
             let range = Range::new(y, y + layout.height);
             if dirty.overlaps(range) {
                 debug!("Output {}: rendering block {}", output_id, range);
+                let block = blocks.resolve_mut(blocks.order[i]);
                 let colors = block.colors();
                 let inner = self.draw_block(
                     &mut map,

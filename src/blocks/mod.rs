@@ -10,49 +10,92 @@ pub fn inner_margin(font_size: u32) -> i32 {
     font_size as i32 / 5
 }
 
-pub fn new(config: &Config) -> Vec<Box<dyn Block>> {
-    let mut blocks: Vec<Box<dyn Block>> = Vec::with_capacity(config.bar.blocks.len());
-    for entry in config.bar.blocks.iter().rev() {
-        let (kind, name) = entry.split_once('.').unwrap_or_else(|| {
-            panic!(
-                "Invalid bar.blocks entry '{}': expected '<type>.<name>'",
-                entry
-            )
-        });
-        match kind {
-            "time" => {
-                let cfg = config
-                    .time
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
-                blocks.push(Box::new(time::Time::new(&cfg)));
+#[derive(Clone, Copy)]
+pub enum Instance {
+    Time(usize),
+    Battery(usize),
+    Volume(usize),
+}
+
+pub struct Blocks {
+    pub order: Vec<Instance>,
+    pub time: time::Group,
+    pub battery: battery::Group,
+    pub volume: volume::Group,
+}
+
+impl Blocks {
+    pub fn new(config: &Config) -> Self {
+        let mut blocks = Self {
+            order: Vec::with_capacity(config.bar.blocks.len()),
+            time: time::Group::new(),
+            battery: battery::Group::new(),
+            volume: volume::Group::new(),
+        };
+        for entry in config.bar.blocks.iter().rev() {
+            let (kind, name) = entry.split_once('.').unwrap_or_else(|| {
+                panic!(
+                    "Invalid bar.blocks entry '{}': expected '<type>.<name>'",
+                    entry
+                )
+            });
+            match kind {
+                "time" => {
+                    let cfg = config
+                        .time
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
+                    let idx = blocks.time.instances.len();
+                    blocks.time.instances.push(time::Time::new(&cfg));
+                    blocks.order.push(Instance::Time(idx));
+                }
+                "battery" => {
+                    let cfg = config
+                        .battery
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
+                    let idx = blocks.battery.instances.len();
+                    blocks.battery.instances.push(battery::Battery::new(&cfg));
+                    blocks.order.push(Instance::Battery(idx));
+                }
+                "volume" => {
+                    let cfg = config
+                        .volume
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
+                    let volume = volume::Volume::new(&cfg)
+                        .unwrap_or_else(|e| panic!("Failed to construct volume.{}: {}", name, e));
+                    let idx = blocks.volume.instances.len();
+                    blocks.volume.instances.push(volume);
+                    blocks.order.push(Instance::Volume(idx));
+                }
+                _ => panic!(
+                    "Unknown block type '{}' in bar.blocks entry '{}'",
+                    kind, entry
+                ),
             }
-            "battery" => {
-                let cfg = config
-                    .battery
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
-                blocks.push(Box::new(battery::Battery::new(&cfg)));
-            }
-            "volume" => {
-                let cfg = config
-                    .volume
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
-                let volume = volume::Volume::new(&cfg)
-                    .unwrap_or_else(|e| panic!("Failed to construct volume.{}: {}", name, e));
-                blocks.push(Box::new(volume));
-            }
-            _ => panic!(
-                "Unknown block type '{}' in bar.blocks entry '{}'",
-                kind, entry
-            ),
+        }
+        blocks
+    }
+
+    pub fn resolve(&self, r: Instance) -> &dyn Block {
+        match r {
+            Instance::Time(j) => &self.time.instances[j],
+            Instance::Battery(j) => &self.battery.instances[j],
+            Instance::Volume(j) => &self.volume.instances[j],
         }
     }
-    blocks
+
+    pub fn resolve_mut(&mut self, r: Instance) -> &mut dyn Block {
+        match r {
+            Instance::Time(j) => &mut self.time.instances[j],
+            Instance::Battery(j) => &mut self.battery.instances[j],
+            Instance::Volume(j) => &mut self.volume.instances[j],
+        }
+    }
 }
 
 pub struct Fd(pub RawFd);
@@ -114,12 +157,12 @@ mod tests {
     #[test]
     #[should_panic(expected = "Invalid bar.blocks entry 'noname'")]
     fn missing_separator_panics() {
-        new(&config_with_blocks(&["noname"]));
+        Blocks::new(&config_with_blocks(&["noname"]));
     }
 
     #[test]
     #[should_panic(expected = "Unknown block type 'unknown' in bar.blocks entry 'unknown.default'")]
     fn unknown_kind_panics() {
-        new(&config_with_blocks(&["unknown.default"]));
+        Blocks::new(&config_with_blocks(&["unknown.default"]));
     }
 }

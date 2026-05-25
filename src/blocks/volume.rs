@@ -37,6 +37,18 @@ impl State {
     }
 }
 
+pub struct Group {
+    pub instances: Vec<Volume>,
+}
+
+impl Group {
+    pub fn new() -> Self {
+        Self {
+            instances: Vec::new(),
+        }
+    }
+}
+
 pub struct Volume {
     _context: pw::context::ContextRc,
     _core: pw::core::CoreRc,

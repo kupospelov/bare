@@ -1,4 +1,4 @@
-use crate::blocks::{self, Block};
+use crate::blocks::Blocks;
 use crate::config::Config;
 use crate::font;
 use crate::raster;
@@ -58,13 +58,13 @@ pub struct State {
     pub workspace_manager: Option<ext_workspace_manager_v1::ExtWorkspaceManagerV1>,
     pub workspace_handles: HashMap<ObjectId, Workspace>,
     pub renderer: Renderer,
-    pub blocks: Vec<Box<dyn Block>>,
+    pub blocks: Blocks,
 }
 
 impl State {
     pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
         let (font, font_size) = font::load(&config.bar.font);
-        let blocks = blocks::new(&config);
+        let blocks = Blocks::new(&config);
         let renderer = Renderer::new(
             raster::Rasterizer::new(font),
             font_size,
@@ -180,11 +180,11 @@ impl State {
     }
 
     pub fn register_event_sources(&self, handle: &calloop::LoopHandle<'_, State>) {
-        for i in 0..self.blocks.len() {
-            if let Some(fd) = self.blocks[i].fd() {
+        for (i, &block_ref) in self.blocks.order.iter().enumerate() {
+            if let Some(fd) = self.blocks.resolve(block_ref).fd() {
                 handle
                     .insert_source(fd, move |_readiness, _fd, state| {
-                        if state.blocks[i].on_fd() {
+                        if state.blocks.resolve_mut(block_ref).on_fd() {
                             state.mark_all_outputs_block_dirty(i);
                         }
                         Ok(calloop::PostAction::Continue)
@@ -192,17 +192,17 @@ impl State {
                     .expect("Failed to insert block fd source");
             }
 
-            let timer = match self.blocks[i].reschedule() {
+            let timer = match self.blocks.resolve(block_ref).reschedule() {
                 TimeoutAction::ToInstant(i) => calloop::timer::Timer::from_deadline(i),
                 TimeoutAction::ToDuration(d) => calloop::timer::Timer::from_duration(d),
                 TimeoutAction::Drop => continue,
             };
             handle
                 .insert_source(timer, move |_, _, state| {
-                    if state.blocks[i].update() {
+                    if state.blocks.resolve_mut(block_ref).update() {
                         state.mark_all_outputs_block_dirty(i);
                     }
-                    state.blocks[i].reschedule()
+                    state.blocks.resolve(block_ref).reschedule()
                 })
                 .expect("Failed to insert block timer");
         }
