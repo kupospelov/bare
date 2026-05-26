@@ -6,7 +6,6 @@ use crate::render::Renderer;
 use crate::wayland::output::Output;
 use crate::wayland::pointer::Pointer;
 use crate::{debug, warning};
-use calloop::timer::TimeoutAction;
 use std::collections::HashMap;
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle, WEnum,
@@ -146,7 +145,7 @@ impl State {
         }
     }
 
-    fn mark_all_outputs_block_dirty(&mut self, block_idx: usize) {
+    pub(crate) fn mark_all_outputs_block_dirty(&mut self, block_idx: usize) {
         for output in self.outputs.values_mut() {
             let range = output.block_range(block_idx);
             let output_id = output.output.id();
@@ -191,21 +190,9 @@ impl State {
                     })
                     .expect("Failed to insert block fd source");
             }
-
-            let timer = match self.blocks.resolve(block_ref).reschedule() {
-                TimeoutAction::ToInstant(i) => calloop::timer::Timer::from_deadline(i),
-                TimeoutAction::ToDuration(d) => calloop::timer::Timer::from_duration(d),
-                TimeoutAction::Drop => continue,
-            };
-            handle
-                .insert_source(timer, move |_, _, state| {
-                    if state.blocks.resolve_mut(block_ref).update() {
-                        state.mark_all_outputs_block_dirty(i);
-                    }
-                    state.blocks.resolve(block_ref).reschedule()
-                })
-                .expect("Failed to insert block timer");
         }
+
+        self.blocks.time.register_events(handle);
     }
 }
 

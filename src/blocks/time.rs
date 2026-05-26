@@ -1,17 +1,73 @@
-use super::Block;
+use std::time::Instant;
+
+use super::{Block, Instance};
 use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
 use crate::render;
+use crate::state::State;
 use crate::{debug, error};
+use calloop::timer::{TimeoutAction, Timer};
+use time::OffsetDateTime;
 
 pub struct Group {
+    pub now: OffsetDateTime,
     pub instances: Vec<Time>,
 }
 
 impl Group {
     pub fn new() -> Self {
         Self {
+            now: Self::read_local(),
             instances: Vec::new(),
         }
+    }
+
+    fn read_local() -> OffsetDateTime {
+        let now = match OffsetDateTime::now_local() {
+            Ok(local) => local,
+            Err(error) => {
+                error!("Cannot get local time: {:?}", error);
+                OffsetDateTime::now_utc()
+            }
+        };
+        debug!("Read local time: {}", now);
+        now
+    }
+
+    pub fn add(&mut self, config: &TimeConfig) -> Instance {
+        let n = self.instances.len();
+        self.instances.push(Time {
+            now: self.now,
+            config: config.clone(),
+        });
+        Instance::Time(n)
+    }
+
+    pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
+        if self.instances.is_empty() {
+            return;
+        }
+
+        handle
+            .insert_source(Timer::from_deadline(self.next_instant()), |_, _, state| {
+                let now = Self::read_local();
+                state.blocks.time.now = now;
+
+                for i in 0..state.blocks.order.len() {
+                    if let Instance::Time(j) = state.blocks.order[i]
+                        && state.blocks.time.instances[j].update(now)
+                    {
+                        state.mark_all_outputs_block_dirty(i);
+                    }
+                }
+
+                TimeoutAction::ToInstant(state.blocks.time.next_instant())
+            })
+            .expect("Failed to insert time group timer");
+    }
+
+    fn next_instant(&self) -> Instant {
+        let next = 60 - (self.now.second() as u64);
+        Instant::now() + std::time::Duration::from_secs(next)
     }
 }
 
@@ -21,25 +77,6 @@ pub struct Time {
 }
 
 impl Time {
-    pub fn new(config: &TimeConfig) -> Self {
-        Self {
-            now: Self::now(),
-            config: config.clone(),
-        }
-    }
-
-    fn now() -> time::OffsetDateTime {
-        let now = match time::OffsetDateTime::now_local() {
-            Ok(local) => local,
-            Err(error) => {
-                error!("Cannot get local time: {:?}", error);
-                time::OffsetDateTime::now_utc()
-            }
-        };
-        debug!("Updated local time: {}", now);
-        now
-    }
-
     fn item_text(&self, item: &TimeFormatItem) -> String {
         match item {
             TimeFormatItem::Hour => format!("{:02}", self.now.hour()),
@@ -55,6 +92,18 @@ impl Time {
             TimeFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
             _ => font_size,
         }
+    }
+
+    fn update(&mut self, now: time::OffsetDateTime) -> bool {
+        let changed = self.config.format.iter().any(|item| match item {
+            TimeFormatItem::Hour => self.now.hour() != now.hour(),
+            TimeFormatItem::Minute => self.now.minute() != now.minute(),
+            TimeFormatItem::Day => self.now.day() != now.day(),
+            TimeFormatItem::Month => self.now.month() != now.month(),
+            TimeFormatItem::Label(_) => false,
+        });
+        self.now = now;
+        changed
     }
 }
 
@@ -108,18 +157,5 @@ impl Block for Time {
             );
             y += h as i32 + margin;
         }
-    }
-
-    fn update(&mut self) -> bool {
-        self.now = Self::now();
-        true
-    }
-
-    fn reschedule(&self) -> calloop::timer::TimeoutAction {
-        let now = time::OffsetDateTime::now_utc();
-        let next = 60 - (now.second() as u64);
-        calloop::timer::TimeoutAction::ToInstant(
-            std::time::Instant::now() + std::time::Duration::from_secs(next),
-        )
     }
 }

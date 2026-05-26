@@ -32,6 +32,7 @@ impl Blocks {
             battery: battery::Group::new(),
             volume: volume::Group::new(),
         };
+
         for entry in config.bar.blocks.iter().rev() {
             let (kind, name) = entry.split_once('.').unwrap_or_else(|| {
                 panic!(
@@ -46,9 +47,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
-                    let idx = blocks.time.instances.len();
-                    blocks.time.instances.push(time::Time::new(&cfg));
-                    blocks.order.push(Instance::Time(idx));
+                    blocks.order.push(blocks.time.add(&cfg));
                 }
                 "battery" => {
                     let cfg = config
@@ -122,17 +121,6 @@ pub trait Block {
         font_size: u32,
     );
 
-    /// Update internal state. Returns true if the display needs to be redrawn.
-    fn update(&mut self) -> bool {
-        false
-    }
-
-    /// Returns the next timeout action. Called once on registration and again after each timer
-    /// fire. Return `Drop` if this block never needs timer-driven updates.
-    fn reschedule(&self) -> calloop::timer::TimeoutAction {
-        calloop::timer::TimeoutAction::Drop
-    }
-
     /// Calloop event source to register, if this block is fd-driven.
     fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
         None
@@ -149,6 +137,7 @@ mod tests {
     use super::*;
 
     fn config_with_blocks(entries: &[&str]) -> Config {
+        crate::log::set(crate::log::Level::Error);
         let mut config = Config::default();
         config.bar.blocks = entries.iter().map(|s| (*s).to_string()).collect();
         config
