@@ -179,21 +179,9 @@ impl State {
     }
 
     pub fn register_event_sources(&self, handle: &calloop::LoopHandle<'_, State>) {
-        for (i, &block_ref) in self.blocks.order.iter().enumerate() {
-            if let Some(fd) = self.blocks.resolve(block_ref).fd() {
-                handle
-                    .insert_source(fd, move |_readiness, _fd, state| {
-                        if state.blocks.resolve_mut(block_ref).on_fd() {
-                            state.mark_all_outputs_block_dirty(i);
-                        }
-                        Ok(calloop::PostAction::Continue)
-                    })
-                    .expect("Failed to insert block fd source");
-            }
-        }
-
         self.blocks.time.register_events(handle);
         self.blocks.battery.register_events(handle);
+        self.blocks.volume.register_events(handle);
     }
 }
 

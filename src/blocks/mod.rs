@@ -63,11 +63,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
-                    let volume = volume::Volume::new(&cfg)
-                        .unwrap_or_else(|e| panic!("Failed to construct volume.{}: {}", name, e));
-                    let idx = blocks.volume.instances.len();
-                    blocks.volume.instances.push(volume);
-                    blocks.order.push(Instance::Volume(idx));
+                    blocks.order.push(blocks.volume.add(&cfg));
                 }
                 _ => panic!(
                     "Unknown block type '{}' in bar.blocks entry '{}'",
@@ -118,16 +114,6 @@ pub trait Block {
         region: crate::render::Region,
         font_size: u32,
     );
-
-    /// Calloop event source to register, if this block is fd-driven.
-    fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
-        None
-    }
-
-    /// Drain pending events from the fd. Returns true if a redraw is needed.
-    fn on_fd(&mut self) -> bool {
-        false
-    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
-use super::{Block, Fd};
+use super::{Block, Fd, Instance};
 use crate::config::{ColorConfig, VolumeConfig, VolumeFormatItem};
 use crate::render;
+use crate::state::State;
 use crate::{debug, error};
 use pipewire as pw;
 use pw::spa::param::ParamType;
@@ -22,12 +23,12 @@ struct SinkState {
 }
 
 #[derive(Default)]
-struct State {
+struct Sinks {
     default_sink: Option<String>,
     sinks: HashMap<String, SinkState>,
 }
 
-impl State {
+impl Sinks {
     fn current(&self) -> SinkState {
         self.default_sink
             .as_ref()
@@ -47,17 +48,56 @@ impl Group {
             instances: Vec::new(),
         }
     }
+
+    pub fn add(&mut self, config: &VolumeConfig) -> Instance {
+        let n = self.instances.len();
+        self.instances.push(Volume::new(config));
+        Instance::Volume(n)
+    }
+
+    pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
+        if self.instances.is_empty() {
+            return;
+        }
+
+        let pw = PipeWire::new().expect("Failed to connect to PipeWire");
+        let fd = pw.main_loop.loop_().fd().as_raw_fd();
+        handle
+            .insert_source(
+                calloop::generic::Generic::new(
+                    Fd(fd),
+                    calloop::Interest::READ,
+                    calloop::Mode::Level,
+                ),
+                move |_, _, state| {
+                    // Bind pw to capture the whole struct.
+                    let _ = &pw;
+
+                    pw.main_loop.loop_().iterate(std::time::Duration::ZERO);
+                    let current = pw.sinks.borrow().current();
+                    for i in 0..state.blocks.order.len() {
+                        if let Instance::Volume(j) = state.blocks.order[i]
+                            && state.blocks.volume.instances[j].update(&current)
+                        {
+                            state.mark_all_outputs_block_dirty(i);
+                        }
+                    }
+
+                    Ok(calloop::PostAction::Continue)
+                },
+            )
+            .expect("Failed to insert volume group fd");
+    }
 }
 
-pub struct Volume {
+struct PipeWire {
+    main_loop: pw::main_loop::MainLoopRc,
     _context: pw::context::ContextRc,
     _core: pw::core::CoreRc,
     _registry: pw::registry::RegistryRc,
     _registry_listener: pw::registry::Listener,
     _proxies: Rc<RefCell<HashMap<u32, ProxyEntry>>>,
-    main_loop: pw::main_loop::MainLoopRc,
-    state: Rc<RefCell<State>>,
-    config: VolumeConfig,
+    sinks: Rc<RefCell<Sinks>>,
 }
 
 struct ProxyEntry {
@@ -65,30 +105,51 @@ struct ProxyEntry {
     _listener: Box<dyn pw::proxy::Listener>,
 }
 
-impl Volume {
-    pub fn new(config: &VolumeConfig) -> Result<Self, Box<dyn std::error::Error>> {
+impl PipeWire {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let main_loop = pw::main_loop::MainLoopRc::new(None)?;
         let context = pw::context::ContextRc::new(&main_loop, None)?;
         let core = context.connect_rc(None)?;
         let registry = core.get_registry_rc()?;
-        let state = Rc::new(RefCell::new(State::default()));
+        let sinks = Rc::new(RefCell::new(Sinks::default()));
         let proxies: Rc<RefCell<HashMap<u32, ProxyEntry>>> = Rc::new(RefCell::new(HashMap::new()));
-        let registry_listener = build_registry_listener(&registry, state.clone(), proxies.clone());
+        let registry_listener = build_registry_listener(&registry, sinks.clone(), proxies.clone());
         Ok(Self {
+            main_loop,
             _context: context,
             _core: core,
             _registry: registry,
             _registry_listener: registry_listener,
             _proxies: proxies,
-            main_loop,
-            state,
-            config: config.clone(),
+            sinks,
         })
+    }
+}
+
+pub struct Volume {
+    sink: SinkState,
+    config: VolumeConfig,
+}
+
+impl Volume {
+    pub fn new(config: &VolumeConfig) -> Self {
+        Self {
+            sink: SinkState::default(),
+            config: config.clone(),
+        }
+    }
+
+    fn update(&mut self, current: &SinkState) -> bool {
+        if &self.sink == current {
+            return false;
+        }
+        self.sink = current.clone();
+        true
     }
 
     fn item_text(&self, item: &VolumeFormatItem) -> String {
         match item {
-            VolumeFormatItem::Volume => match self.state.borrow().current().percent {
+            VolumeFormatItem::Volume => match self.sink.percent {
                 Some(p) => format!("{}", p),
                 None => "??".into(),
             },
@@ -123,7 +184,7 @@ impl Block for Volume {
     }
 
     fn colors(&self) -> &ColorConfig {
-        if self.state.borrow().current().mute {
+        if self.sink.mute {
             &self.config.muted.color
         } else {
             &self.config.color
@@ -137,7 +198,7 @@ impl Block for Volume {
         region: render::Region,
         font_size: u32,
     ) {
-        let color = if self.state.borrow().current().mute {
+        let color = if self.sink.mute {
             &self.config.muted.color
         } else {
             &self.config.color
@@ -163,26 +224,11 @@ impl Block for Volume {
             y += h as i32 + margin;
         }
     }
-
-    fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
-        Some(calloop::generic::Generic::new(
-            Fd(self.main_loop.loop_().fd().as_raw_fd()),
-            calloop::Interest::READ,
-            calloop::Mode::Level,
-        ))
-    }
-
-    fn on_fd(&mut self) -> bool {
-        let before = self.state.borrow().current();
-        self.main_loop.loop_().iterate(std::time::Duration::ZERO);
-        let after = self.state.borrow().current();
-        before != after
-    }
 }
 
 fn build_registry_listener(
     registry: &pw::registry::RegistryRc,
-    state: Rc<RefCell<State>>,
+    sinks: Rc<RefCell<Sinks>>,
     proxies: Rc<RefCell<HashMap<u32, ProxyEntry>>>,
 ) -> pw::registry::Listener {
     let registry_weak = registry.downgrade();
@@ -195,8 +241,8 @@ fn build_registry_listener(
                     return;
                 };
                 let entry = match obj.type_ {
-                    ObjectType::Metadata => bind_default_metadata(&registry, obj, &state),
-                    ObjectType::Node => bind_audio_sink(&registry, obj, &state),
+                    ObjectType::Metadata => bind_default_metadata(&registry, obj, &sinks),
+                    ObjectType::Node => bind_audio_sink(&registry, obj, &sinks),
                     _ => return,
                 };
                 if let Some(entry) = entry {
@@ -213,7 +259,7 @@ fn build_registry_listener(
 fn bind_default_metadata(
     registry: &pw::registry::RegistryRc,
     obj: &pw::registry::GlobalObject<&pw::spa::utils::dict::DictRef>,
-    state: &Rc<RefCell<State>>,
+    sinks: &Rc<RefCell<Sinks>>,
 ) -> Option<ProxyEntry> {
     let props = obj.props?;
     if props.get("metadata.name") != Some("default") {
@@ -226,13 +272,13 @@ fn bind_default_metadata(
     let listener = metadata
         .add_listener_local()
         .property({
-            let state = state.clone();
+            let sinks = sinks.clone();
             move |_subject, key, _type_, value| {
                 if key == Some("default.audio.sink") {
                     // Parse JSON like `{"name":"sink_name"}`
                     if let Some(name) = value.and_then(|v| v.split('"').nth(3)) {
                         debug!("Default sink = {}", name);
-                        state.borrow_mut().default_sink = Some(name.to_string());
+                        sinks.borrow_mut().default_sink = Some(name.to_string());
                     }
                 }
                 0
@@ -248,7 +294,7 @@ fn bind_default_metadata(
 fn bind_audio_sink(
     registry: &pw::registry::RegistryRc,
     obj: &pw::registry::GlobalObject<&pw::spa::utils::dict::DictRef>,
-    state: &Rc<RefCell<State>>,
+    sinks: &Rc<RefCell<Sinks>>,
 ) -> Option<ProxyEntry> {
     let props = obj.props?;
     if props.get("media.class") != Some("Audio/Sink") {
@@ -263,13 +309,13 @@ fn bind_audio_sink(
     let listener = node
         .add_listener_local()
         .param({
-            let state = state.clone();
+            let sinks = sinks.clone();
             move |_seq, _id, _idx, _next, pod| {
                 let Some(pod) = pod else { return };
                 let Some((vol, mute)) = parse_props(pod) else {
                     return;
                 };
-                let mut s = state.borrow_mut();
+                let mut s = sinks.borrow_mut();
                 let entry = s.sinks.entry(name.clone()).or_default();
                 if let Some(v) = vol {
                     entry.percent = Some(v);
