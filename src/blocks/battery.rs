@@ -1,6 +1,7 @@
-use super::{Block, Fd};
+use super::{Block, Instance};
 use crate::config::{BatteryConfig, BatteryFormatItem, ColorConfig};
 use crate::render;
+use crate::state::State;
 use crate::{debug, error};
 use nix::sys::socket::{
     self, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
@@ -17,22 +18,65 @@ impl Group {
             instances: Vec::new(),
         }
     }
+
+    pub fn add(&mut self, config: &BatteryConfig) -> Instance {
+        let n = self.instances.len();
+        self.instances.push(Battery::new(config));
+        Instance::Battery(n)
+    }
+
+    pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
+        if self.instances.is_empty() {
+            return;
+        }
+
+        let socket = open_uevent_socket().expect("Failed to open uevent socket");
+        handle
+            .insert_source(
+                calloop::generic::Generic::new(
+                    socket,
+                    calloop::Interest::READ,
+                    calloop::Mode::Level,
+                ),
+                |_, socket, state| {
+                    let mut buf = [0u8; 8192];
+                    loop {
+                        match socket::recv(socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
+                            Ok(n) => {
+                                let event = parse_event(buf[..n].split(|&b| b == 0));
+                                for i in 0..state.blocks.order.len() {
+                                    if let Instance::Battery(j) = state.blocks.order[i]
+                                        && state.blocks.battery.instances[j].update(&event)
+                                    {
+                                        state.mark_all_outputs_block_dirty(i);
+                                    }
+                                }
+                            }
+                            Err(nix::errno::Errno::EAGAIN) => break,
+                            Err(e) => {
+                                error!("Failed to read uevent: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Ok(calloop::PostAction::Continue)
+                },
+            )
+            .expect("Failed to insert battery group fd");
+    }
 }
 
 pub struct Battery {
     pub capacity: String,
     name: String,
-    socket: OwnedFd,
     config: BatteryConfig,
 }
 
 impl Battery {
     pub fn new(config: &BatteryConfig) -> Self {
-        let socket = open_uevent_socket().expect("Failed to open uevent socket");
         let mut battery = Self {
             capacity: String::new(),
             name: String::new(),
-            socket,
             config: config.clone(),
         };
         match std::fs::read(&battery.config.path) {
@@ -79,36 +123,18 @@ impl Battery {
         }
     }
 
-    fn drain(&mut self) -> bool {
-        let mut buf = [0u8; 8192];
-        let mut redraw = false;
-        loop {
-            match socket::recv(self.socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
-                Ok(n) => {
-                    let event = parse_event(buf[..n].split(|&b| b == 0));
-                    let Some(name) = event.name else {
-                        continue;
-                    };
-
-                    if self.name != name {
-                        debug!("Battery {}: skipping", name);
-                        continue;
-                    }
-
-                    if let Some(c) = event.capacity {
-                        redraw |= self.set_capacity(c);
-                    } else {
-                        debug!("Battery {}: no reported capacity", name);
-                    }
-                }
-                Err(nix::errno::Errno::EAGAIN) => break,
-                Err(e) => {
-                    error!("Failed to read uevent: {}", e);
-                    break;
-                }
-            }
+    fn update(&mut self, event: &Event) -> bool {
+        let Some(name) = &event.name else {
+            return false;
+        };
+        if &self.name != name {
+            return false;
         }
-        redraw
+        let Some(c) = &event.capacity else {
+            debug!("Battery {}: no reported capacity", name);
+            return false;
+        };
+        self.set_capacity(c.clone())
     }
 }
 
@@ -191,17 +217,5 @@ impl Block for Battery {
             );
             y += h as i32 + margin;
         }
-    }
-
-    fn fd(&self) -> Option<calloop::generic::Generic<Fd>> {
-        Some(calloop::generic::Generic::new(
-            Fd(self.socket.as_raw_fd()),
-            calloop::Interest::READ,
-            calloop::Mode::Level,
-        ))
-    }
-
-    fn on_fd(&mut self) -> bool {
-        self.drain()
     }
 }

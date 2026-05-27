@@ -193,6 +193,7 @@ impl State {
         }
 
         self.blocks.time.register_events(handle);
+        self.blocks.battery.register_events(handle);
     }
 }
 

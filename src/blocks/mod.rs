@@ -55,9 +55,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
-                    let idx = blocks.battery.instances.len();
-                    blocks.battery.instances.push(battery::Battery::new(&cfg));
-                    blocks.order.push(Instance::Battery(idx));
+                    blocks.order.push(blocks.battery.add(&cfg));
                 }
                 "volume" => {
                     let cfg = config
