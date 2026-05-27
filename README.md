@@ -2,6 +2,8 @@
 
 A lightweight vertical bar for Wayland compositors.
 
+<img width="1280" height="720" alt="bare" src="https://github.com/user-attachments/assets/9559e037-8a5b-489c-a00e-ffba882d56f0" />
+
 ## Inspiration
 
 `bare` is a vertical bar focused on maximizing useful screen space and minimizing system resource usage.
