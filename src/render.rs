@@ -501,7 +501,7 @@ mod tests {
         let config = BlockConfig {
             margins: [1, 2, 3, 4],
             borders: [5, 6, 7, 8],
-            height: None,
+            height: 0,
         };
         let inner = r.draw_block(&mut map, outer, &config, BG, FG);
         assert_eq!(inner.x, 4 + 8);

@@ -40,8 +40,7 @@ impl Default for BarConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(from = "shadow::WorkspaceConfig")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceConfig {
     pub block: BlockConfig,
     pub active: WorkspaceStateConfig,
@@ -59,7 +58,7 @@ pub struct WorkspaceStateConfig {
 pub struct BlockConfig {
     pub margins: [i32; 4],
     pub borders: [i32; 4],
-    pub height: Option<i32>,
+    pub height: i32,
 }
 
 impl BlockConfig {
@@ -67,8 +66,12 @@ impl BlockConfig {
         Self {
             margins: self.margins.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
-            height: self.height.map(|h| h * scale),
+            height: self.height * scale,
         }
+    }
+
+    pub fn height(&self, min: i32) -> i32 {
+        self.height.max(min) + self.margins[0] + self.margins[2]
     }
 }
 
@@ -89,12 +92,13 @@ impl WorkspaceConfig {
             urgent: self.urgent.clone(),
         }
     }
-}
 
-impl Default for WorkspaceConfig {
-    fn default() -> Self {
+    pub(crate) fn default() -> Self {
         Self {
-            block: BlockConfig::default(),
+            block: BlockConfig {
+                height: 28,
+                ..BlockConfig::default()
+            },
             active: WorkspaceStateConfig {
                 color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
@@ -367,6 +371,17 @@ mod shadow {
         pub border: Option<Color>,
     }
 
+    impl WorkspaceConfig {
+        pub(super) fn resolve(self, default: &super::WorkspaceConfig) -> super::WorkspaceConfig {
+            super::WorkspaceConfig {
+                block: self.block.resolve(&default.block),
+                active: self.active.resolve(&default.active),
+                inactive: self.inactive.resolve(&default.inactive),
+                urgent: self.urgent.resolve(&default.urgent),
+            }
+        }
+    }
+
     impl WorkspaceStateConfig {
         pub(super) fn resolve(
             self,
@@ -435,7 +450,7 @@ mod shadow {
             super::BlockConfig {
                 margins: self.margins.unwrap_or(default.margins),
                 borders: self.borders.unwrap_or(default.borders),
-                height: self.height.or(default.height),
+                height: self.height.unwrap_or(default.height),
             }
         }
     }
@@ -454,11 +469,12 @@ mod shadow {
 impl From<shadow::Config> for Config {
     fn from(shadow: shadow::Config) -> Self {
         let bar = BarConfig::from(shadow.bar);
+        let workspace = WorkspaceConfig::default();
         let volume = VolumeConfig::default(&bar.color);
         let battery = BatteryConfig::default(&bar.color);
         let time = TimeConfig::default(&bar.color);
         Self {
-            workspace: WorkspaceConfig::from(shadow.workspace),
+            workspace: shadow.workspace.resolve(&workspace),
             volume: shadow
                 .volume
                 .into_iter()
@@ -492,18 +508,6 @@ impl From<shadow::BarConfig> for BarConfig {
     }
 }
 
-impl From<shadow::WorkspaceConfig> for WorkspaceConfig {
-    fn from(shadow: shadow::WorkspaceConfig) -> Self {
-        let d = WorkspaceConfig::default();
-        Self {
-            block: shadow.block.resolve(&d.block),
-            active: shadow.active.resolve(&d.active),
-            inactive: shadow.inactive.resolve(&d.inactive),
-            urgent: shadow.urgent.resolve(&d.urgent),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,7 +527,7 @@ mod tests {
         let w = config.workspace;
         assert_eq!(w.block.margins, [0, 0, 0, 0]);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
-        assert_eq!(w.block.height, None);
+        assert_eq!(w.block.height, 28);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));
         assert_eq!(w.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
@@ -562,6 +566,7 @@ mod tests {
             r###"
             [workspace]
             margins = [10, 20, 30, 40]
+            height = 50
 
             [workspace.inactive.color]
             background = "#112233"
@@ -572,6 +577,7 @@ mod tests {
         let w = config.workspace;
         assert_eq!(w.block.margins, [10, 20, 30, 40]);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.height, 50);
         assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
         assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
@@ -609,7 +615,7 @@ mod tests {
 
         let b = config.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT0/uevent"));
-        assert_eq!(b.block.height, None);
+        assert_eq!(b.block.height, 0);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
         assert_eq!(b.block.margins, [0, 0, 0, 0]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -640,7 +646,7 @@ mod tests {
 
         let b = config.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT1/uevent"));
-        assert_eq!(b.block.height, None);
+        assert_eq!(b.block.height, 0);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
         assert_eq!(b.block.margins, [1, 2, 3, 4]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -777,8 +783,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(config.time.get("0").unwrap().block.height, Some(64));
-        assert_eq!(config.battery.get("0").unwrap().block.height, None);
+        assert_eq!(config.time.get("0").unwrap().block.height, 64);
+        assert_eq!(config.battery.get("0").unwrap().block.height, 0);
     }
 
     #[test]

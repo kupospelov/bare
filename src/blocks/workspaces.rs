@@ -7,16 +7,16 @@ pub struct Workspaces {
     pub items: Vec<Workspace>,
     pub height: i32,
     config: WorkspaceConfig,
-    y_start: i32,
 }
 
 impl Workspaces {
-    pub fn new(height: i32, config: &WorkspaceConfig) -> Self {
+    pub fn new(config: &WorkspaceConfig, font_size: u32) -> Self {
+        let c = config.scaled(1);
+        let height = c.block.height(font_size as i32);
         Self {
             items: Vec::new(),
             height,
-            config: config.scaled(1),
-            y_start: 0,
+            config: c,
         }
     }
 
@@ -28,7 +28,7 @@ impl Workspaces {
         if self.height == 0 {
             return None;
         }
-        let index = (y - self.y_start) / self.height;
+        let index = y / self.height;
         if index >= 0 && (index as usize) < self.items.len() {
             Some(&self.items[index as usize].handle)
         } else {
@@ -44,7 +44,6 @@ impl Workspaces {
         font_size: u32,
         dirty: Range,
     ) {
-        self.y_start = region.y;
         let mut y = region.y;
         for ws in &self.items {
             let range = Range::new(y, y + self.height);
@@ -93,10 +92,9 @@ impl Workspaces {
         dirty
     }
 
-    pub fn set_scale(&mut self, config: &crate::config::Config, scale: i32) {
-        self.config = config.workspace.scaled(scale);
-        let margins = self.config.block.margins;
-        let width = config.bar.width as i32 * scale;
-        self.height = (width - margins[1] - margins[3]).max(0) + margins[0] + margins[2];
+    pub fn set_scale(&mut self, config: &crate::config::Config, font_size: u32, scale: i32) {
+        let c = config.workspace.scaled(scale);
+        self.height = c.block.height(font_size as i32 * scale);
+        self.config = c;
     }
 }

@@ -170,15 +170,15 @@ impl Block for Volume {
         let items = &self.config.format;
         let separator = super::inner_margin(font_size);
         let gaps = items.len().saturating_sub(1) as i32;
-        let height: i32 = items
+        let content: i32 = items
             .iter()
             .map(|i| Self::item_height(i, font_size) as i32)
             .sum::<i32>()
             + gaps * separator;
         let block = self.config.block.scaled(scale);
         render::BlockLayout {
-            content: height,
-            height: block.height.unwrap_or(height) + block.margins[0] + block.margins[2],
+            content,
+            height: block.height(content),
             config: block,
         }
     }
