@@ -18,3 +18,4 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 pipewire = "0.9"
 clap = { version = "4", features = ["derive"] }
+neli-wifi = "0.6.1"

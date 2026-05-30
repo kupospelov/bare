@@ -1,9 +1,10 @@
 pub mod battery;
 pub mod time;
 pub mod volume;
+pub mod wireless;
 pub mod workspaces;
 
-use crate::config::{BatteryConfig, ColorConfig, Config, TimeConfig, VolumeConfig};
+use crate::config::{BatteryConfig, ColorConfig, Config, TimeConfig, VolumeConfig, WirelessConfig};
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
 pub fn inner_margin(font_size: u32) -> i32 {
@@ -15,6 +16,7 @@ pub enum Instance {
     Time(usize),
     Battery(usize),
     Volume(usize),
+    Wireless(usize),
 }
 
 pub struct Blocks {
@@ -22,6 +24,7 @@ pub struct Blocks {
     pub time: time::Group,
     pub battery: battery::Group,
     pub volume: volume::Group,
+    pub wireless: wireless::Group,
 }
 
 impl Blocks {
@@ -31,9 +34,10 @@ impl Blocks {
             time: time::Group::new(),
             battery: battery::Group::new(),
             volume: volume::Group::new(),
+            wireless: wireless::Group::new(),
         };
 
-        for entry in config.bar.blocks.iter().rev() {
+        for (i, entry) in config.bar.blocks.iter().rev().enumerate() {
             let (kind, name) = entry.split_once('.').unwrap_or_else(|| {
                 panic!(
                     "Invalid bar.blocks entry '{}': expected '<type>.<name>'",
@@ -65,6 +69,14 @@ impl Blocks {
                         .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
                     blocks.order.push(blocks.volume.add(&cfg));
                 }
+                "wireless" => {
+                    let cfg = config
+                        .wireless
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| WirelessConfig::default(&config.bar.color));
+                    blocks.order.push(blocks.wireless.add(&cfg, i));
+                }
                 _ => panic!(
                     "Unknown block type '{}' in bar.blocks entry '{}'",
                     kind, entry
@@ -79,6 +91,7 @@ impl Blocks {
             Instance::Time(j) => &self.time.instances[j],
             Instance::Battery(j) => &self.battery.instances[j],
             Instance::Volume(j) => &self.volume.instances[j],
+            Instance::Wireless(j) => &self.wireless.instances[j],
         }
     }
 
@@ -87,6 +100,7 @@ impl Blocks {
             Instance::Time(j) => &mut self.time.instances[j],
             Instance::Battery(j) => &mut self.battery.instances[j],
             Instance::Volume(j) => &mut self.volume.instances[j],
+            Instance::Wireless(j) => &mut self.wireless.instances[j],
         }
     }
 }

@@ -51,8 +51,8 @@ See *COLORS* for more information.
 # BLOCKS
 
 Blocks are configured as named instances of a block type. The available types
-are *volume*, *battery*, and *time*. Instances are defined in *\[type.<name>\]*
-sections and referenced in the *\[bar.blocks\]*.
+are *wireless*, *volume*, *battery*, and *time*. Instances are defined in
+*\[type.<name>\]* sections and referenced in the *\[bar.blocks\]*.
 
 Each block section accepts options described in *BOX MODEL*, a *color* section
 described in *COLORS*, and a *format* option specific to the block type.
@@ -65,6 +65,30 @@ per-state.
 Labels longer than 2 characters are rendered with a smaller font size to make
 them aligned with regular 2-character blocks. Placeholders are always rendered
 with the bar font size to avoid vertical shifts.
+
+## Wireless
+
+*\[wireless.<name>\]*
+	Display the status of a wireless interface.
+
+	*interface*=_name_
+		Name of the interface.
+
+		Default: "wlan0"
+
+	*interval*=_interval_
+		Polling interval in seconds.
+
+		Default: 30
+
+	*format*=_\[token, ...\]_
+
+		Default: \["NET", "\[quality\]"\]
+
+		The following placeholders are recognized:
+
+		*\[quality\]*
+			Signal quality.
 
 ## Volume
 

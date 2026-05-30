@@ -180,10 +180,11 @@ impl State {
         let _ = conn.flush();
     }
 
-    pub fn register_event_sources(&self, handle: &calloop::LoopHandle<'_, State>) {
+    pub fn register_event_sources(&mut self, handle: &calloop::LoopHandle<'_, State>) {
         self.blocks.time.register_events(handle);
         self.blocks.battery.register_events(handle);
         self.blocks.volume.register_events(handle);
+        self.blocks.wireless.register_events(handle);
     }
 }
 

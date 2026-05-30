@@ -12,6 +12,7 @@ const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
+    pub wireless: HashMap<String, WirelessConfig>,
     pub volume: HashMap<String, VolumeConfig>,
     pub battery: HashMap<String, BatteryConfig>,
     pub time: HashMap<String, TimeConfig>,
@@ -237,6 +238,45 @@ impl BatteryFormatItem {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct WirelessConfig {
+    pub interface: String,
+    pub interval: u64,
+    pub block: BlockConfig,
+    pub color: ColorConfig,
+    pub format: Vec<WirelessFormatItem>,
+}
+
+impl WirelessConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
+        Self {
+            interface: "wlan0".into(),
+            interval: 30,
+            block: BlockConfig::default(),
+            color: color.clone(),
+            format: vec![
+                WirelessFormatItem::Label("NET".into()),
+                WirelessFormatItem::Quality,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WirelessFormatItem {
+    Quality,
+    Label(String),
+}
+
+impl WirelessFormatItem {
+    pub(crate) fn parse(s: String) -> Self {
+        match s.as_str() {
+            "[quality]" => Self::Quality,
+            _ => Self::Label(s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
@@ -317,6 +357,7 @@ mod shadow {
     pub(super) struct Config {
         pub bar: BarConfig,
         pub workspace: WorkspaceConfig,
+        pub wireless: HashMap<String, WirelessConfig>,
         pub volume: HashMap<String, VolumeConfig>,
         pub battery: HashMap<String, BatteryConfig>,
         pub time: HashMap<String, TimeConfig>,
@@ -382,6 +423,17 @@ mod shadow {
     #[serde(default, deny_unknown_fields)]
     pub(super) struct BatteryStateConfig {
         pub color: ColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct WirelessConfig {
+        pub interface: Option<String>,
+        pub interval: Option<u64>,
+        #[serde(flatten)]
+        pub block: BlockConfig,
+        pub color: ColorConfig,
+        pub format: Option<Vec<String>>,
     }
 
     #[derive(Default, Deserialize)]
@@ -485,6 +537,25 @@ mod shadow {
         }
     }
 
+    impl WirelessConfig {
+        pub(super) fn resolve(self, default: &super::WirelessConfig) -> super::WirelessConfig {
+            super::WirelessConfig {
+                interface: self.interface.unwrap_or_else(|| default.interface.clone()),
+                interval: self.interval.unwrap_or(default.interval),
+                block: self.block.resolve(&default.block),
+                color: self.color.resolve(&default.color),
+                format: self
+                    .format
+                    .map(|v| {
+                        v.into_iter()
+                            .map(super::WirelessFormatItem::parse)
+                            .collect()
+                    })
+                    .unwrap_or_else(|| default.format.clone()),
+            }
+        }
+    }
+
     impl TimeConfig {
         pub(super) fn resolve(self, default: &super::TimeConfig) -> super::TimeConfig {
             super::TimeConfig {
@@ -523,11 +594,17 @@ impl From<shadow::Config> for Config {
     fn from(shadow: shadow::Config) -> Self {
         let bar = BarConfig::from(shadow.bar);
         let workspace = WorkspaceConfig::default();
+        let wireless = WirelessConfig::default(&bar.color);
         let volume = VolumeConfig::default(&bar.color);
         let battery = BatteryConfig::default(&bar.color);
         let time = TimeConfig::default(&bar.color);
         Self {
             workspace: shadow.workspace.resolve(&workspace),
+            wireless: shadow
+                .wireless
+                .into_iter()
+                .map(|(name, config)| (name, config.resolve(&wireless)))
+                .collect(),
             volume: shadow
                 .volume
                 .into_iter()
@@ -705,6 +782,79 @@ mod tests {
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn wireless_defaults() {
+        let config: Config = toml::from_str(
+            r###"
+            [wireless.0]
+            "###,
+        )
+        .unwrap();
+
+        let w = config.wireless.get("0").unwrap();
+        assert_eq!(w.interface, "wlan0");
+        assert_eq!(w.interval, 30);
+        assert_eq!(w.block.height, 0);
+        assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.margins, [0, 0, 0, 0]);
+        assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(w.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(
+            w.format,
+            vec![
+                WirelessFormatItem::Label("NET".into()),
+                WirelessFormatItem::Quality,
+            ]
+        );
+    }
+
+    #[test]
+    fn wireless_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [wireless.0]
+            interface = "wlp3s0"
+            interval = 1
+            margins = [1, 2, 3, 4]
+
+            [wireless.0.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        let w = config.wireless.get("0").unwrap();
+        assert_eq!(w.interface, "wlp3s0");
+        assert_eq!(w.interval, 1);
+        assert_eq!(w.block.height, 0);
+        assert_eq!(w.block.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.margins, [1, 2, 3, 4]);
+        assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(w.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn wireless_format_parses_tokens_and_labels() {
+        let config: Config = toml::from_str(
+            r###"
+            [wireless.0]
+            format = ["[quality]", "hello"]
+            "###,
+        )
+        .unwrap();
+
+        let w = config.wireless.get("0").unwrap();
+        assert_eq!(
+            w.format,
+            vec![
+                WirelessFormatItem::Quality,
+                WirelessFormatItem::Label("hello".into()),
+            ]
+        );
     }
 
     #[test]
