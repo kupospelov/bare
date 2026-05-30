@@ -1,6 +1,7 @@
 use crate::blocks::Blocks;
 use crate::config::Config;
 use crate::font;
+use crate::init::Init;
 use crate::raster;
 use crate::render::Renderer;
 use crate::wayland::output::Output;
@@ -46,22 +47,22 @@ pub struct Group {
 pub struct State {
     pub config: Config,
     pub qh: QueueHandle<State>,
-    pub compositor: Option<wl_compositor::WlCompositor>,
-    pub shm: Option<wl_shm::WlShm>,
-    pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    pub compositor: wl_compositor::WlCompositor,
+    pub shm: wl_shm::WlShm,
+    pub layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1,
     pub outputs: HashMap<ObjectId, Output>, // output id -> Output
     pub groups: HashMap<ObjectId, Group>,   // group id -> Group
     pub seat: Option<wl_seat::WlSeat>,
     pub cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     pub pointer: Option<Pointer>,
-    pub workspace_manager: Option<ext_workspace_manager_v1::ExtWorkspaceManagerV1>,
+    pub workspace_manager: ext_workspace_manager_v1::ExtWorkspaceManagerV1,
     pub workspace_handles: HashMap<ObjectId, Workspace>,
     pub renderer: Renderer,
     pub blocks: Blocks,
 }
 
 impl State {
-    pub fn new(config: Config, qh: QueueHandle<State>) -> Self {
+    pub fn new(config: Config, qh: QueueHandle<State>, init: Init) -> Self {
         let (font, font_size) = font::load(&config.bar.font);
         let blocks = Blocks::new(&config);
         let renderer = Renderer::new(
@@ -72,24 +73,24 @@ impl State {
         Self {
             config,
             qh,
-            compositor: None,
-            shm: None,
-            layer_shell: None,
+            compositor: init.compositor.expect("Missing wl_compositor"),
+            shm: init.shm.expect("Missing wl_shm"),
+            layer_shell: init.layer_shell.expect("Missing zwlr_layer_shell_v1"),
+            workspace_manager: init.workspace_manager.expect("Missing ext-workspace-v1"),
             outputs: HashMap::new(),
             groups: HashMap::new(),
             seat: None,
             cursor_shape_manager: None,
             pointer: None,
             workspace_handles: HashMap::new(),
-            workspace_manager: None,
             renderer,
             blocks,
         }
     }
 
     fn create_output(&mut self, name: u32, output: wl_output::WlOutput) {
-        let layer_shell = self.layer_shell.as_ref().unwrap();
-        let compositor = self.compositor.as_ref().unwrap();
+        let layer_shell = &self.layer_shell;
+        let compositor = &self.compositor;
         let id = output.id();
 
         let surface = compositor.create_surface(&self.qh, ());
@@ -167,7 +168,7 @@ impl State {
             .map(|(id, _)| id.clone())
             .collect();
         if !outputs_to_render.is_empty() {
-            let shm = self.shm.as_ref().unwrap().clone();
+            let shm = self.shm.clone();
             let qh = self.qh.clone();
             for id in outputs_to_render {
                 if let Some(output) = self.outputs.get_mut(&id) {
@@ -199,33 +200,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
             wl_registry::Event::Global {
                 name, interface, ..
             } => match &interface[..] {
-                "wl_compositor" => {
-                    state.compositor =
-                        Some(registry.bind::<wl_compositor::WlCompositor, _, _>(name, 4, qh, ()));
-                }
-                "wl_shm" => {
-                    state.shm = Some(registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ()));
-                }
-                "zwlr_layer_shell_v1" => {
-                    state.layer_shell = Some(
-                        registry.bind::<zwlr_layer_shell_v1::ZwlrLayerShellV1, _, _>(
-                            name,
-                            1,
-                            qh,
-                            (),
-                        ),
-                    );
-                }
-                "ext_workspace_manager_v1" => {
-                    state.workspace_manager = Some(
-                        registry.bind::<ext_workspace_manager_v1::ExtWorkspaceManagerV1, _, _>(
-                            name,
-                            1,
-                            qh,
-                            (),
-                        ),
-                    );
-                }
                 "wl_output" => {
                     let output = registry.bind::<wl_output::WlOutput, _, _>(name, 3, qh, ());
                     state.create_output(name, output);
@@ -362,9 +336,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                         handle.activate();
                         debug!("Activated handle at y = {}", physical_y);
 
-                        if let Some(mgr) = state.workspace_manager.as_ref() {
-                            mgr.commit();
-                        }
+                        state.workspace_manager.commit();
                         let _ = conn.flush();
                     }
                 }
