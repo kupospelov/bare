@@ -66,17 +66,44 @@ impl Group {
     }
 }
 
+#[derive(Default, Clone, Copy, PartialEq)]
+enum BatteryState {
+    #[default]
+    Unknown,
+    Discharging,
+    Charging,
+    Full,
+    Idle,
+}
+
+impl BatteryState {
+    fn from_status(status: &str) -> Self {
+        match status {
+            "Discharging" => Self::Discharging,
+            "Charging" => Self::Charging,
+            "Full" => Self::Full,
+            "Not charging" => Self::Idle,
+            s => {
+                debug!("Unknown battery status: {}", s);
+                Self::Unknown
+            }
+        }
+    }
+}
+
 pub struct Battery {
-    pub capacity: String,
     name: String,
+    state: BatteryState,
+    capacity: String,
     config: BatteryConfig,
 }
 
 impl Battery {
     pub fn new(config: &BatteryConfig) -> Self {
         let mut battery = Self {
-            capacity: String::new(),
             name: String::new(),
+            state: BatteryState::default(),
+            capacity: String::new(),
             config: config.clone(),
         };
         match std::fs::read(&battery.config.path) {
@@ -88,6 +115,9 @@ impl Battery {
                         .capacity
                         .expect("No POWER_SUPPLY_CAPACITY in the uevent file"),
                 );
+                if let Some(status) = event.status {
+                    battery.set_state(BatteryState::from_status(&status));
+                }
             }
             Err(e) => error!("Failed to read uevent file: {}", e),
         }
@@ -101,6 +131,24 @@ impl Battery {
         debug!("Updated battery capacity: {}", c);
         self.capacity = c;
         true
+    }
+
+    fn set_state(&mut self, state: BatteryState) -> bool {
+        if state == self.state {
+            return false;
+        }
+        self.state = state;
+        true
+    }
+
+    fn state_color(&self) -> &ColorConfig {
+        match self.state {
+            BatteryState::Discharging => &self.config.color,
+            BatteryState::Charging => &self.config.charging.color,
+            BatteryState::Full => &self.config.full.color,
+            BatteryState::Idle => &self.config.idle.color,
+            BatteryState::Unknown => &self.config.unknown.color,
+        }
     }
 
     fn item_text(&self, item: &BatteryFormatItem) -> String {
@@ -130,30 +178,48 @@ impl Battery {
         if &self.name != name {
             return false;
         }
-        let Some(c) = &event.capacity else {
+
+        let mut dirty = false;
+        if let Some(status) = &event.status {
+            dirty |= self.set_state(BatteryState::from_status(status));
+        } else {
+            debug!("Battery {}: no reported status", name);
+        }
+
+        if let Some(c) = &event.capacity {
+            dirty |= self.set_capacity(c.clone());
+        } else {
             debug!("Battery {}: no reported capacity", name);
-            return false;
-        };
-        self.set_capacity(c.clone())
+        }
+
+        dirty
     }
 }
 
 struct Event {
     name: Option<String>,
+    status: Option<String>,
     capacity: Option<String>,
 }
 
 fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>) -> Event {
     let mut name = None;
+    let mut status = None;
     let mut capacity = None;
     for f in fields {
         if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
             name = std::str::from_utf8(v).ok().map(str::to_owned);
+        } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_STATUS=") {
+            status = std::str::from_utf8(v).ok().map(str::to_owned);
         } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_CAPACITY=") {
             capacity = std::str::from_utf8(v).ok().map(str::to_owned);
         }
     }
-    Event { name, capacity }
+    Event {
+        name,
+        status,
+        capacity,
+    }
 }
 
 fn open_uevent_socket() -> nix::Result<OwnedFd> {
@@ -186,7 +252,7 @@ impl Block for Battery {
     }
 
     fn colors(&self) -> &ColorConfig {
-        &self.config.color
+        self.state_color()
     }
 
     fn render(
@@ -196,7 +262,7 @@ impl Block for Battery {
         region: render::Region,
         font_size: u32,
     ) {
-        let color = &self.config.color;
+        let color = self.state_color();
         let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {

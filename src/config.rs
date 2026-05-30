@@ -4,6 +4,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+const GOOD: Color = Color::rgb(0x60, 0xb4, 0x8a);
+const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
+
 #[derive(Debug, Deserialize)]
 #[serde(from = "shadow::Config")]
 pub struct Config {
@@ -145,7 +148,7 @@ impl VolumeConfig {
             color: color.clone(),
             muted: VolumeStateConfig {
                 color: ColorConfig {
-                    text: Color::rgb(0xdf, 0xaf, 0x8f),
+                    text: DEGRADED,
                     ..*color
                 },
             },
@@ -177,7 +180,16 @@ pub struct BatteryConfig {
     pub path: PathBuf,
     pub block: BlockConfig,
     pub color: ColorConfig,
+    pub charging: BatteryStateConfig,
+    pub full: BatteryStateConfig,
+    pub idle: BatteryStateConfig,
+    pub unknown: BatteryStateConfig,
     pub format: Vec<BatteryFormatItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BatteryStateConfig {
+    pub color: ColorConfig,
 }
 
 impl BatteryConfig {
@@ -186,6 +198,21 @@ impl BatteryConfig {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             block: BlockConfig::default(),
             color: color.clone(),
+            charging: BatteryStateConfig {
+                color: ColorConfig {
+                    text: GOOD,
+                    ..*color
+                },
+            },
+            full: BatteryStateConfig {
+                color: color.clone(),
+            },
+            idle: BatteryStateConfig {
+                color: color.clone(),
+            },
+            unknown: BatteryStateConfig {
+                color: color.clone(),
+            },
             format: vec![
                 BatteryFormatItem::Label("BAT".into()),
                 BatteryFormatItem::Capacity,
@@ -344,7 +371,17 @@ mod shadow {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
+        pub charging: BatteryStateConfig,
+        pub full: BatteryStateConfig,
+        pub idle: BatteryStateConfig,
+        pub unknown: BatteryStateConfig,
         pub format: Option<Vec<String>>,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default, deny_unknown_fields)]
+    pub(super) struct BatteryStateConfig {
+        pub color: ColorConfig,
     }
 
     #[derive(Default, Deserialize)]
@@ -419,12 +456,27 @@ mod shadow {
         }
     }
 
+    impl BatteryStateConfig {
+        pub(super) fn resolve(
+            self,
+            default: &super::BatteryStateConfig,
+        ) -> super::BatteryStateConfig {
+            super::BatteryStateConfig {
+                color: self.color.resolve(&default.color),
+            }
+        }
+    }
+
     impl BatteryConfig {
         pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
             super::BatteryConfig {
                 path: self.path.unwrap_or_else(|| default.path.clone()),
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
+                charging: self.charging.resolve(&default.charging),
+                full: self.full.resolve(&default.full),
+                idle: self.idle.resolve(&default.idle),
+                unknown: self.unknown.resolve(&default.unknown),
                 format: self
                     .format
                     .map(|v| v.into_iter().map(super::BatteryFormatItem::parse).collect())

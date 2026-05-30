@@ -80,9 +80,8 @@ with the bar font size to avoid vertical shifts.
 		*\[volume\]*
 			Current volume percentage of the default audio sink.
 
-	*\[muted.color\]*
-		The colors used when the sink is muted. See *COLORS* for more
-		information.
+	The volume has the *muted* state. The state defines a color section, e.g.
+	*\[muted.color\]*. See *COLORS* for more information.
 
 ## Battery
 
@@ -102,6 +101,10 @@ with the bar font size to avoid vertical shifts.
 
 		*\[capacity\]*
 			Current battery capacity percentage.
+
+	The battery has the *charging*, *full*, *idle*, and *unknown* states. Each
+	state defines a color section, e.g. *\[charging.color\]*. See *COLORS* for
+	more information.
 
 ## Time
 
@@ -178,6 +181,10 @@ The default colors are:
 :[ #994c4c
 |[ *\[volume.<name>.muted.color\]*
 :[ #dfaf8f
+:[ _inherited_
+:[ _inherited_
+|[ *\[battery.<name>.charging.color\]*
+:[ #60b48a
 :[ _inherited_
 :[ _inherited_
 
