@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::Duration;
 
 use super::{Block, Instance};
 use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
@@ -9,14 +9,12 @@ use calloop::timer::{TimeoutAction, Timer};
 use time::OffsetDateTime;
 
 pub struct Group {
-    pub now: OffsetDateTime,
     pub instances: Vec<Time>,
 }
 
 impl Group {
     pub fn new() -> Self {
         Self {
-            now: Self::read_local(),
             instances: Vec::new(),
         }
     }
@@ -37,7 +35,7 @@ impl Group {
         let n = self.instances.len();
         self.instances.push(Time {
             id,
-            now: self.now,
+            now: time::OffsetDateTime::UNIX_EPOCH,
             config: config.clone(),
         });
         Instance::Time(n)
@@ -49,10 +47,8 @@ impl Group {
         }
 
         handle
-            .insert_source(Timer::from_deadline(self.next_instant()), |_, _, state| {
+            .insert_source(Timer::immediate(), |instant, _, state| {
                 let now = Self::read_local();
-                state.blocks.time.now = now;
-
                 for i in 0..state.blocks.time.instances.len() {
                     let id = {
                         let instance = &mut state.blocks.time.instances[i];
@@ -65,14 +61,9 @@ impl Group {
                     state.mark_all_outputs_block_dirty(id);
                 }
 
-                TimeoutAction::ToInstant(state.blocks.time.next_instant())
+                TimeoutAction::ToInstant(instant + Duration::from_secs(60 - now.second() as u64))
             })
             .expect("Failed to insert time group timer");
-    }
-
-    fn next_instant(&self) -> Instant {
-        let next = 60 - (self.now.second() as u64);
-        Instant::now() + std::time::Duration::from_secs(next)
     }
 }
 
