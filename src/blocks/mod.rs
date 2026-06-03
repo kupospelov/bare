@@ -51,7 +51,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
-                    blocks.order.push(blocks.time.add(&cfg));
+                    blocks.order.push(blocks.time.add(i, &cfg));
                 }
                 "battery" => {
                     let cfg = config
@@ -59,7 +59,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
-                    blocks.order.push(blocks.battery.add(&cfg));
+                    blocks.order.push(blocks.battery.add(i, &cfg));
                 }
                 "volume" => {
                     let cfg = config
@@ -67,7 +67,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
-                    blocks.order.push(blocks.volume.add(&cfg));
+                    blocks.order.push(blocks.volume.add(i, &cfg));
                 }
                 "wireless" => {
                     let cfg = config
@@ -75,7 +75,7 @@ impl Blocks {
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| WirelessConfig::default(&config.bar.color));
-                    blocks.order.push(blocks.wireless.add(&cfg, i));
+                    blocks.order.push(blocks.wireless.add(i, &cfg));
                 }
                 _ => panic!(
                     "Unknown block type '{}' in bar.blocks entry '{}'",

@@ -26,9 +26,9 @@ impl Group {
         }
     }
 
-    pub fn add(&mut self, config: &WirelessConfig, id: usize) -> Instance {
+    pub fn add(&mut self, id: usize, config: &WirelessConfig) -> Instance {
         let n = self.instances.len();
-        self.instances.push(Wireless::new(config, id));
+        self.instances.push(Wireless::new(id, config));
         Instance::Wireless(n)
     }
 
@@ -65,7 +65,6 @@ impl Group {
                         ) {
                             Ok(e) => {
                                 debug!("Read a netlink event {}", e);
-
                                 for i in 0..state.blocks.wireless.instances.len() {
                                     update_instance(state, i);
                                 }
@@ -138,19 +137,19 @@ fn dbm_to_quality(dbm: i8) -> u8 {
 }
 
 pub struct Wireless {
-    config: WirelessConfig,
     id: usize,
+    config: WirelessConfig,
     interface: i32,
     signal: Option<i8>,
 }
 
 impl Wireless {
-    pub fn new(config: &WirelessConfig, id: usize) -> Self {
+    pub fn new(id: usize, config: &WirelessConfig) -> Self {
         let interface =
             if_nametoindex(config.interface.as_str()).expect("Failed to resolve interface") as i32;
         Self {
-            config: config.clone(),
             id,
+            config: config.clone(),
             interface,
             signal: None,
         }

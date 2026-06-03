@@ -19,9 +19,9 @@ impl Group {
         }
     }
 
-    pub fn add(&mut self, config: &BatteryConfig) -> Instance {
+    pub fn add(&mut self, id: usize, config: &BatteryConfig) -> Instance {
         let n = self.instances.len();
-        self.instances.push(Battery::new(config));
+        self.instances.push(Battery::new(id, config));
         Instance::Battery(n)
     }
 
@@ -44,12 +44,16 @@ impl Group {
                         match socket::recv(socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
                             Ok(n) => {
                                 let event = parse_event(buf[..n].split(|&b| b == 0));
-                                for i in 0..state.blocks.order.len() {
-                                    if let Instance::Battery(j) = state.blocks.order[i]
-                                        && state.blocks.battery.instances[j].update(&event)
-                                    {
-                                        state.mark_all_outputs_block_dirty(i);
-                                    }
+                                for i in 0..state.blocks.battery.instances.len() {
+                                    let id = {
+                                        let instance = &mut state.blocks.battery.instances[i];
+                                        if !instance.update(&event) {
+                                            continue;
+                                        }
+                                        instance.id
+                                    };
+
+                                    state.mark_all_outputs_block_dirty(id);
                                 }
                             }
                             Err(nix::errno::Errno::EAGAIN) => break,
@@ -92,6 +96,7 @@ impl BatteryState {
 }
 
 pub struct Battery {
+    id: usize,
     name: String,
     state: BatteryState,
     capacity: String,
@@ -99,8 +104,9 @@ pub struct Battery {
 }
 
 impl Battery {
-    pub fn new(config: &BatteryConfig) -> Self {
+    pub fn new(id: usize, config: &BatteryConfig) -> Self {
         let mut battery = Self {
+            id,
             name: String::new(),
             state: BatteryState::default(),
             capacity: String::new(),

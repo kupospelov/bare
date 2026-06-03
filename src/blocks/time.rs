@@ -33,9 +33,10 @@ impl Group {
         now
     }
 
-    pub fn add(&mut self, config: &TimeConfig) -> Instance {
+    pub fn add(&mut self, id: usize, config: &TimeConfig) -> Instance {
         let n = self.instances.len();
         self.instances.push(Time {
+            id,
             now: self.now,
             config: config.clone(),
         });
@@ -52,12 +53,16 @@ impl Group {
                 let now = Self::read_local();
                 state.blocks.time.now = now;
 
-                for i in 0..state.blocks.order.len() {
-                    if let Instance::Time(j) = state.blocks.order[i]
-                        && state.blocks.time.instances[j].update(now)
-                    {
-                        state.mark_all_outputs_block_dirty(i);
-                    }
+                for i in 0..state.blocks.time.instances.len() {
+                    let id = {
+                        let instance = &mut state.blocks.time.instances[i];
+                        if !instance.update(now) {
+                            continue;
+                        }
+                        instance.id
+                    };
+
+                    state.mark_all_outputs_block_dirty(id);
                 }
 
                 TimeoutAction::ToInstant(state.blocks.time.next_instant())
@@ -72,6 +77,7 @@ impl Group {
 }
 
 pub struct Time {
+    id: usize,
     now: time::OffsetDateTime,
     config: TimeConfig,
 }

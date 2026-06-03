@@ -49,9 +49,9 @@ impl Group {
         }
     }
 
-    pub fn add(&mut self, config: &VolumeConfig) -> Instance {
+    pub fn add(&mut self, id: usize, config: &VolumeConfig) -> Instance {
         let n = self.instances.len();
-        self.instances.push(Volume::new(config));
+        self.instances.push(Volume::new(id, config));
         Instance::Volume(n)
     }
 
@@ -75,12 +75,17 @@ impl Group {
 
                     pw.main_loop.loop_().iterate(std::time::Duration::ZERO);
                     let current = pw.sinks.borrow().current();
-                    for i in 0..state.blocks.order.len() {
-                        if let Instance::Volume(j) = state.blocks.order[i]
-                            && state.blocks.volume.instances[j].update(&current)
-                        {
-                            state.mark_all_outputs_block_dirty(i);
-                        }
+
+                    for i in 0..state.blocks.volume.instances.len() {
+                        let id = {
+                            let instance = &mut state.blocks.volume.instances[i];
+                            if !instance.update(&current) {
+                                continue;
+                            }
+                            instance.id
+                        };
+
+                        state.mark_all_outputs_block_dirty(id);
                     }
 
                     Ok(calloop::PostAction::Continue)
@@ -127,13 +132,15 @@ impl PipeWire {
 }
 
 pub struct Volume {
+    id: usize,
     sink: SinkState,
     config: VolumeConfig,
 }
 
 impl Volume {
-    pub fn new(config: &VolumeConfig) -> Self {
+    pub fn new(id: usize, config: &VolumeConfig) -> Self {
         Self {
+            id,
             sink: SinkState::default(),
             config: config.clone(),
         }
