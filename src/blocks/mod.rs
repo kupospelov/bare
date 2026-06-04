@@ -1,10 +1,13 @@
 pub mod battery;
+pub mod cpu;
 pub mod time;
 pub mod volume;
 pub mod wireless;
 pub mod workspaces;
 
-use crate::config::{BatteryConfig, ColorConfig, Config, TimeConfig, VolumeConfig, WirelessConfig};
+use crate::config::{
+    BatteryConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig, WirelessConfig,
+};
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
 pub fn inner_margin(font_size: u32) -> i32 {
@@ -17,6 +20,7 @@ pub enum Instance {
     Battery(usize),
     Volume(usize),
     Wireless(usize),
+    Cpu(usize),
 }
 
 pub struct Blocks {
@@ -25,6 +29,7 @@ pub struct Blocks {
     pub battery: battery::Group,
     pub volume: volume::Group,
     pub wireless: wireless::Group,
+    pub cpu: cpu::Group,
 }
 
 impl Blocks {
@@ -35,6 +40,7 @@ impl Blocks {
             battery: battery::Group::new(),
             volume: volume::Group::new(),
             wireless: wireless::Group::new(),
+            cpu: cpu::Group::new(),
         };
 
         for (i, entry) in config.bar.blocks.iter().rev().enumerate() {
@@ -77,6 +83,14 @@ impl Blocks {
                         .unwrap_or_else(|| WirelessConfig::default(&config.bar.color));
                     blocks.order.push(blocks.wireless.add(i, &cfg));
                 }
+                "cpu" => {
+                    let cfg = config
+                        .cpu
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| CpuConfig::default(&config.bar.color));
+                    blocks.order.push(blocks.cpu.add(i, &cfg));
+                }
                 _ => panic!(
                     "Unknown block type '{}' in bar.blocks entry '{}'",
                     kind, entry
@@ -92,6 +106,7 @@ impl Blocks {
             Instance::Battery(j) => &self.battery.instances[j],
             Instance::Volume(j) => &self.volume.instances[j],
             Instance::Wireless(j) => &self.wireless.instances[j],
+            Instance::Cpu(j) => &self.cpu.instances[j],
         }
     }
 
@@ -101,6 +116,7 @@ impl Blocks {
             Instance::Battery(j) => &mut self.battery.instances[j],
             Instance::Volume(j) => &mut self.volume.instances[j],
             Instance::Wireless(j) => &mut self.wireless.instances[j],
+            Instance::Cpu(j) => &mut self.cpu.instances[j],
         }
     }
 }

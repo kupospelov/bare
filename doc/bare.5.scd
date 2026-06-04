@@ -23,6 +23,11 @@ The *\[bar\]* section configures the bar.
 
 	Default: 28
 
+*interval*=_interval_
+	Polling interval in seconds.
+
+	Default: 10
+
 *separator*=_px_
 	Set the vertical space between adjacent blocks in pixels.
 
@@ -51,7 +56,7 @@ See *COLORS* for more information.
 # BLOCKS
 
 Blocks are configured as named instances of a block type. The available types
-are *wireless*, *volume*, *battery*, and *time*. Instances are defined in
+are *cpu*, *wireless*, *volume*, *battery*, and *time*. Instances are defined in
 *\[type.<name>\]* sections and referenced in the *\[bar.blocks\]*.
 
 Each block section accepts options described in *BOX MODEL*, a *color* section
@@ -66,6 +71,20 @@ Labels longer than 2 characters are rendered with a smaller font size to make
 them aligned with regular 2-character blocks. Placeholders are always rendered
 with the bar font size to avoid vertical shifts.
 
+## CPU
+
+*\[cpu.<name>\]*
+	Display the CPU status.
+
+	*format*=_\[token, ...\]_
+
+		Default: \["CPU", "\[usage\]"\]
+
+		The following placeholders are recognized:
+
+		*\[usage\]*
+			Usage percentage.
+
 ## Wireless
 
 *\[wireless.<name>\]*
@@ -75,11 +94,6 @@ with the bar font size to avoid vertical shifts.
 		Name of the interface.
 
 		Default: "wlan0"
-
-	*interval*=_interval_
-		Polling interval in seconds.
-
-		Default: 30
 
 	*format*=_\[token, ...\]_
 

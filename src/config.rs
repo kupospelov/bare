@@ -3,6 +3,7 @@ use crate::debug;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 const GOOD: Color = Color::rgb(0x60, 0xb4, 0x8a);
 const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
@@ -16,6 +17,7 @@ pub struct Config {
     pub volume: HashMap<String, VolumeConfig>,
     pub battery: HashMap<String, BatteryConfig>,
     pub time: HashMap<String, TimeConfig>,
+    pub cpu: HashMap<String, CpuConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +25,7 @@ pub struct Config {
 pub struct BarConfig {
     pub font: String,
     pub width: u32,
+    pub interval: Duration,
     pub separator: u32,
     pub blocks: Vec<String>,
     pub color: ColorConfig,
@@ -33,6 +36,7 @@ impl Default for BarConfig {
         Self {
             font: "Sans Bold 9".into(),
             width: 28,
+            interval: Duration::from_secs(10),
             separator: 14,
             blocks: vec!["volume.0".into(), "battery.0".into(), "time.0".into()],
             color: ColorConfig {
@@ -240,7 +244,6 @@ impl BatteryFormatItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WirelessConfig {
     pub interface: String,
-    pub interval: u64,
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<WirelessFormatItem>,
@@ -250,7 +253,6 @@ impl WirelessConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
             interface: "wlan0".into(),
-            interval: 30,
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![
@@ -314,6 +316,38 @@ impl TimeFormatItem {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CpuConfig {
+    pub block: BlockConfig,
+    pub color: ColorConfig,
+    pub format: Vec<CpuFormatItem>,
+}
+
+impl CpuConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
+        Self {
+            block: BlockConfig::default(),
+            color: color.clone(),
+            format: vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CpuFormatItem {
+    Usage,
+    Label(String),
+}
+
+impl CpuFormatItem {
+    pub(crate) fn parse(s: String) -> Self {
+        match s.as_str() {
+            "[usage]" => Self::Usage,
+            _ => Self::Label(s),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self::from(shadow::Config::default())
@@ -361,6 +395,7 @@ mod shadow {
         pub volume: HashMap<String, VolumeConfig>,
         pub battery: HashMap<String, BatteryConfig>,
         pub time: HashMap<String, TimeConfig>,
+        pub cpu: HashMap<String, CpuConfig>,
     }
 
     #[derive(Default, Deserialize)]
@@ -368,6 +403,7 @@ mod shadow {
     pub(super) struct BarConfig {
         pub font: Option<String>,
         pub width: Option<u32>,
+        pub interval: Option<u64>,
         pub separator: Option<u32>,
         pub blocks: Option<Vec<String>>,
         pub color: ColorConfig,
@@ -429,7 +465,6 @@ mod shadow {
     #[serde(default)]
     pub(super) struct WirelessConfig {
         pub interface: Option<String>,
-        pub interval: Option<u64>,
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -439,6 +474,15 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct TimeConfig {
+        #[serde(flatten)]
+        pub block: BlockConfig,
+        pub color: ColorConfig,
+        pub format: Option<Vec<String>>,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    pub(super) struct CpuConfig {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -541,7 +585,6 @@ mod shadow {
         pub(super) fn resolve(self, default: &super::WirelessConfig) -> super::WirelessConfig {
             super::WirelessConfig {
                 interface: self.interface.unwrap_or_else(|| default.interface.clone()),
-                interval: self.interval.unwrap_or(default.interval),
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
                 format: self
@@ -564,6 +607,19 @@ mod shadow {
                 format: self
                     .format
                     .map(|v| v.into_iter().map(super::TimeFormatItem::parse).collect())
+                    .unwrap_or_else(|| default.format.clone()),
+            }
+        }
+    }
+
+    impl CpuConfig {
+        pub(super) fn resolve(self, default: &super::CpuConfig) -> super::CpuConfig {
+            super::CpuConfig {
+                block: self.block.resolve(&default.block),
+                color: self.color.resolve(&default.color),
+                format: self
+                    .format
+                    .map(|v| v.into_iter().map(super::CpuFormatItem::parse).collect())
                     .unwrap_or_else(|| default.format.clone()),
             }
         }
@@ -594,12 +650,18 @@ impl From<shadow::Config> for Config {
     fn from(shadow: shadow::Config) -> Self {
         let bar = BarConfig::from(shadow.bar);
         let workspace = WorkspaceConfig::default();
+        let cpu = CpuConfig::default(&bar.color);
         let wireless = WirelessConfig::default(&bar.color);
         let volume = VolumeConfig::default(&bar.color);
         let battery = BatteryConfig::default(&bar.color);
         let time = TimeConfig::default(&bar.color);
         Self {
             workspace: shadow.workspace.resolve(&workspace),
+            cpu: shadow
+                .cpu
+                .into_iter()
+                .map(|(name, config)| (name, config.resolve(&cpu)))
+                .collect(),
             wireless: shadow
                 .wireless
                 .into_iter()
@@ -631,6 +693,10 @@ impl From<shadow::BarConfig> for BarConfig {
         Self {
             font: shadow.font.unwrap_or(d.font),
             width: shadow.width.unwrap_or(d.width),
+            interval: shadow
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(d.interval),
             separator: shadow.separator.unwrap_or(d.separator),
             blocks: shadow.blocks.unwrap_or(d.blocks),
             color: shadow.color.resolve(&d.color),
@@ -648,6 +714,7 @@ mod tests {
 
         let b = config.bar;
         assert_eq!(b.width, 28);
+        assert_eq!(b.interval, Duration::from_secs(10));
         assert_eq!(b.separator, 14);
         assert_eq!(b.blocks, ["volume.0", "battery.0", "time.0"]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -669,6 +736,8 @@ mod tests {
         assert_eq!(w.urgent.color.border, Color::rgb(0x99, 0x4c, 0x4c));
 
         // Maps are not auto-populated.
+        assert_eq!(config.cpu.len(), 0);
+        assert_eq!(config.wireless.len(), 0);
         assert_eq!(config.volume.len(), 0);
         assert_eq!(config.battery.len(), 0);
         assert_eq!(config.time.len(), 0);
@@ -678,6 +747,9 @@ mod tests {
     fn bar_partial_override() {
         let config: Config = toml::from_str(
             r###"
+            [bar]
+            interval = 5
+
             [bar.color]
             background = "#aabbcc"
             "###,
@@ -685,6 +757,7 @@ mod tests {
         .unwrap();
 
         let b = config.bar;
+        assert_eq!(b.interval, Duration::from_secs(5));
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
@@ -795,7 +868,6 @@ mod tests {
 
         let w = config.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlan0");
-        assert_eq!(w.interval, 30);
         assert_eq!(w.block.height, 0);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
         assert_eq!(w.block.margins, [0, 0, 0, 0]);
@@ -817,7 +889,6 @@ mod tests {
             r###"
             [wireless.0]
             interface = "wlp3s0"
-            interval = 1
             margins = [1, 2, 3, 4]
 
             [wireless.0.color]
@@ -828,7 +899,6 @@ mod tests {
 
         let w = config.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlp3s0");
-        assert_eq!(w.interval, 1);
         assert_eq!(w.block.height, 0);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
         assert_eq!(w.block.margins, [1, 2, 3, 4]);
@@ -970,6 +1040,23 @@ mod tests {
                 BatteryFormatItem::Capacity,
                 BatteryFormatItem::Label("hello".into()),
             ]
+        );
+    }
+
+    #[test]
+    fn cpu_format_parses_tokens_and_labels() {
+        let config: Config = toml::from_str(
+            r###"
+            [cpu.0]
+            format = ["[usage]", "hello"]
+            "###,
+        )
+        .unwrap();
+
+        let c = config.cpu.get("0").unwrap();
+        assert_eq!(
+            c.format,
+            vec![CpuFormatItem::Usage, CpuFormatItem::Label("hello".into()),]
         );
     }
 

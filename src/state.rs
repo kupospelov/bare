@@ -7,6 +7,7 @@ use crate::render::Renderer;
 use crate::wayland::output::Output;
 use crate::wayland::pointer::Pointer;
 use crate::{debug, warning};
+use calloop::timer::{TimeoutAction, Timer};
 use std::collections::HashMap;
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle, WEnum,
@@ -181,10 +182,25 @@ impl State {
     }
 
     pub fn register_event_sources(&mut self, handle: &calloop::LoopHandle<'_, State>) {
+        // Event-based updates.
         self.blocks.time.register_events(handle);
         self.blocks.battery.register_events(handle);
         self.blocks.volume.register_events(handle);
         self.blocks.wireless.register_events(handle);
+
+        // Interval-based updates.
+        handle
+            .insert_source(Timer::immediate(), move |_, _, state| {
+                let mut dirty = Vec::new();
+                state.blocks.cpu.update(&mut dirty);
+                state.blocks.wireless.update(&mut dirty);
+                for id in dirty {
+                    state.mark_all_outputs_block_dirty(id);
+                }
+
+                TimeoutAction::ToDuration(state.config.bar.interval)
+            })
+            .expect("Failed to insert interval timer");
     }
 }
 

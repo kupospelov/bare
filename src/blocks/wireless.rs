@@ -1,11 +1,8 @@
-use std::time::Duration;
-
 use super::{Block, Instance};
 use crate::config::{ColorConfig, WirelessConfig, WirelessFormatItem};
 use crate::render;
 use crate::state::State;
 use crate::{debug, error};
-use calloop::timer::{TimeoutAction, Timer};
 use neli_wifi::Socket;
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::{
@@ -65,8 +62,10 @@ impl Group {
                         ) {
                             Ok(e) => {
                                 debug!("Read a netlink event {}", e);
-                                for i in 0..state.blocks.wireless.instances.len() {
-                                    update_instance(state, i);
+                                let mut dirty = Vec::new();
+                                state.blocks.wireless.update(&mut dirty);
+                                for id in dirty {
+                                    state.mark_all_outputs_block_dirty(id);
                                 }
                             }
                             Err(nix::errno::Errno::EAGAIN) => break,
@@ -80,16 +79,26 @@ impl Group {
                 },
             )
             .expect("Failed to insert netlink source");
+    }
 
-        for j in 0..self.instances.len() {
-            let interval = Duration::from_secs(self.instances[j].config.interval);
-            handle
-                .insert_source(Timer::immediate(), move |_, _, state| {
-                    update_instance(state, j);
+    pub fn update(&mut self, dirty: &mut Vec<usize>) {
+        let Some(socket) = &mut self.socket else {
+            return;
+        };
 
-                    TimeoutAction::ToDuration(interval)
-                })
-                .expect("Failed to insert wireless instance timer");
+        for instance in &mut self.instances {
+            let signal = match socket.get_station_info(instance.interface) {
+                Ok(stations) => stations.first().and_then(|s| s.signal),
+                Err(e) => {
+                    error!("Error reading station signal: {}", e);
+                    continue;
+                }
+            };
+            if !instance.update(signal) {
+                continue;
+            }
+
+            dirty.push(instance.id);
         }
     }
 }
@@ -106,26 +115,6 @@ fn open_netlink_socket() -> nix::Result<std::os::fd::OwnedFd> {
         &NetlinkAddr::new(0, nix::libc::RTMGRP_LINK as u32),
     )?;
     Ok(fd)
-}
-
-fn update_instance(state: &mut State, j: usize) {
-    let socket = state.blocks.wireless.socket.as_mut().unwrap();
-    let id = {
-        let instance = &mut state.blocks.wireless.instances[j];
-        let signal = match socket.get_station_info(instance.interface) {
-            Ok(stations) => stations.first().and_then(|s| s.signal),
-            Err(e) => {
-                debug!("Error reading station signal: {}", e);
-                return;
-            }
-        };
-        if !instance.update(signal) {
-            return;
-        }
-        instance.id
-    };
-
-    state.mark_all_outputs_block_dirty(id);
 }
 
 fn dbm_to_quality(dbm: i8) -> u8 {
