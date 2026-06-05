@@ -1,6 +1,7 @@
 use crate::config::WorkspaceConfig;
 use crate::render::{self, Range, Renderer};
 use crate::state::Workspace;
+use crate::warning;
 use wayland_protocols::ext::workspace::v1::client::ext_workspace_handle_v1;
 
 pub struct Workspaces {
@@ -22,6 +23,23 @@ impl Workspaces {
 
     pub fn height(&self) -> i32 {
         self.items.len() as i32 * self.height
+    }
+
+    pub fn handle_scroll(
+        &self,
+        steps: i32,
+    ) -> Option<&ext_workspace_handle_v1::ExtWorkspaceHandleV1> {
+        let Some(active) = self.items.iter().position(|ws| ws.active) else {
+            warning!("No active workspace!");
+            return None;
+        };
+
+        let next = (active as i32 + steps).clamp(0, self.items.len() as i32 - 1) as usize;
+        if next == active {
+            return None;
+        }
+
+        Some(&self.items[next].handle)
     }
 
     pub fn handle_at(&self, y: i32) -> Option<&ext_workspace_handle_v1::ExtWorkspaceHandleV1> {

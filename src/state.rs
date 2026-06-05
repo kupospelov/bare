@@ -272,6 +272,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for State {
                         handle,
                         cursor_shape_device,
                         y: 0,
+                        scroll_accumulator: 0.0,
                         surface: None,
                     });
                 }
@@ -322,41 +323,56 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                 state: WEnum::Value(wl_pointer::ButtonState::Pressed),
                 ..
             } => {
-                let pointer = if let Some(pointer) = state.pointer.as_ref() {
-                    pointer
-                } else {
+                let Some(pointer) = state.pointer.as_ref() else {
                     warning!("No pointer found for mouse button pressed event");
                     return;
                 };
 
-                let surface_id = if let Some(surface) = pointer.surface.as_ref() {
-                    surface
-                } else {
-                    warning!("No surface found for mouse button pressed event");
-                    return;
-                };
-
                 debug!("Mouse button press at y = {}", pointer.y);
-                let mut target_output_id = None;
-                for (output_id, output) in &state.outputs {
-                    if output.surface.id() == *surface_id {
-                        target_output_id = Some(output_id.clone());
-                        break;
-                    }
-                }
-
-                if let Some(output_id) = target_output_id
-                    && let Some(output) = state.outputs.get(&output_id)
-                {
+                if let Some(output) = pointer.get_output(&state.outputs) {
                     let physical_y = pointer.y * output.scale;
                     if let Some(handle) = output.workspace_group.handle_at(physical_y) {
+                        debug!("Activating handle at y = {}", physical_y);
                         handle.activate();
-                        debug!("Activated handle at y = {}", physical_y);
-
                         state.workspace_manager.commit();
                         let _ = conn.flush();
                     }
                 }
+            }
+            wl_pointer::Event::Axis {
+                axis: WEnum::Value(wl_pointer::Axis::VerticalScroll),
+                value,
+                ..
+            } => {
+                let Some(pointer) = state.pointer.as_mut() else {
+                    warning!("No pointer found for vertical scroll event");
+                    return;
+                };
+
+                let steps = pointer.scroll(value);
+                if steps == 0 {
+                    return;
+                }
+
+                if let Some(output) = pointer.get_output(&state.outputs)
+                    && let Some(handle) = output.workspace_group.handle_scroll(steps)
+                {
+                    debug!("Switching workspace on axis event {}", steps);
+                    handle.activate();
+                    state.workspace_manager.commit();
+                    let _ = conn.flush();
+                }
+            }
+            wl_pointer::Event::AxisStop {
+                axis: WEnum::Value(wl_pointer::Axis::VerticalScroll),
+                ..
+            } => {
+                let Some(pointer) = state.pointer.as_mut() else {
+                    return;
+                };
+
+                debug!("Resetting scroll accumulator");
+                pointer.scroll_accumulator = 0.0;
             }
             _ => {}
         }
