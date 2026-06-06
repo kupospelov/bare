@@ -224,30 +224,20 @@ impl Renderer {
             return;
         }
 
-        let mut total_advance = 0_i32;
-        let mut max_ymax = i32::MIN;
-        let mut min_ymin = i32::MAX;
-        for &c in &chars {
-            let b = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
-            total_advance += b.advance_width as i32;
-            max_ymax = max_ymax.max(b.ymin + b.height as i32);
-            min_ymin = min_ymin.min(b.ymin);
-        }
-        let first_xmin = self
-            .rasterizer
-            .rasterize(*chars.first().unwrap(), ft_size, ft_color, bg_color)
-            .xmin;
-        let text_width = {
-            let last =
+        let ascent = self.rasterizer.ascent(ft_size);
+        let advance = chars
+            .iter()
+            .map(|c| {
                 self.rasterizer
-                    .rasterize(*chars.last().unwrap(), ft_size, ft_color, bg_color);
-            total_advance - first_xmin - last.advance_width as i32 + last.xmin + last.width as i32
-        };
+                    .rasterize(*c, ft_size, ft_color, bg_color)
+                    .advance_width as i32
+            })
+            .sum::<i32>();
 
-        let baseline = region.y + (region.h as i32 + max_ymax + min_ymin + 1) / 2;
+        let baseline = region.y + (region.h as i32 + ascent - 1) / 2;
         let stride = map.width as usize;
 
-        let mut x_start = region.x + (region.w as i32 - text_width + 1) / 2 - first_xmin;
+        let mut x_start = region.x + (region.w as i32 - advance + 1) / 2;
         let x_end = region.x + region.w as i32;
 
         let (dst, _) = map.data.as_chunks_mut::<4>();
@@ -432,7 +422,11 @@ mod tests {
         (xmin <= xmax).then_some((xmin, xmax, ymin, ymax))
     }
 
-    fn assert_centered(r: &mut Renderer, s: &str, ft_size: u32) {
+    /// Asserts that the rendered string is centered.
+    ///
+    /// - The difference between left and right padding must not exceed `hdiff` pixels.
+    /// - The difference between top and bottom padding must not exceed `vdiff` pixels.
+    fn assert_centered(r: &mut Renderer, s: &str, ft_size: u32, hdiff: i32, vdiff: i32) {
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
         for px in buf.chunks_exact_mut(4) {
             px.copy_from_slice(&[0, 0, 0, 255]);
@@ -447,17 +441,18 @@ mod tests {
 
         let (xmin, xmax, ymin, ymax) =
             glyph_bounds(&buf).unwrap_or_else(|| panic!("'{s}' rendered no pixels"));
-        let above = ymin;
-        let below = SIZE as i32 - 1 - ymax;
         let left = xmin;
         let right = SIZE as i32 - 1 - xmax;
         assert!(
-            (above - below).abs() <= 1,
-            "'{s}' (ft={ft_size}): above={above}, below={below} (y=[{ymin},{ymax}])"
-        );
-        assert!(
-            (left - right).abs() <= 1,
+            (left - right).abs() <= hdiff,
             "'{s}' (ft={ft_size}): left={left}, right={right} (x=[{xmin},{xmax}])"
+        );
+
+        let above = ymin;
+        let below = SIZE as i32 - 1 - ymax;
+        assert!(
+            (above - below).abs() <= vdiff,
+            "'{s}' (ft={ft_size}): above={above}, below={below} (y=[{ymin},{ymax}])"
         );
     }
 
@@ -465,11 +460,23 @@ mod tests {
     fn letters_are_centered() {
         let mut r = make_renderer();
         for a in 'a'..='z' {
-            assert_centered(&mut r, &a.to_string(), FT_SIZE);
+            assert_centered(&mut r, &a.to_string(), FT_SIZE, 2, 5);
             for b in 'a'..='z' {
-                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE);
+                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE, 3, 5);
             }
         }
+
+        // Highest font ymax.
+        assert_centered(&mut r, "af", FT_SIZE, 2, 1);
+        assert_centered(&mut r, "fb", FT_SIZE, 1, 1);
+
+        // Something in the middle.
+        assert_centered(&mut r, "ac", FT_SIZE, 1, 3);
+        assert_centered(&mut r, "qb", FT_SIZE, 1, 3);
+
+        // Lowest font ymin.
+        assert_centered(&mut r, "ag", FT_SIZE, 1, 5);
+        assert_centered(&mut r, "qg", FT_SIZE, 1, 5);
     }
 
     #[test]
@@ -477,11 +484,11 @@ mod tests {
         let mut r = make_renderer();
         let ft = FT_SIZE * 2 / 3;
         for a in '0'..='9' {
-            assert_centered(&mut r, &a.to_string(), FT_SIZE);
+            assert_centered(&mut r, &a.to_string(), FT_SIZE, 2, 1);
             for b in '0'..='9' {
-                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE);
+                assert_centered(&mut r, &format!("{a}{b}"), FT_SIZE, 1, 1);
                 for c in '0'..='9' {
-                    assert_centered(&mut r, &format!("{a}{b}{c}"), ft);
+                    assert_centered(&mut r, &format!("{a}{b}{c}"), ft, 2, 1);
                 }
             }
         }

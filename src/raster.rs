@@ -1,4 +1,5 @@
 use crate::color::Color;
+use crate::info;
 use fontdue::Font;
 use std::collections::HashMap;
 
@@ -36,6 +37,15 @@ impl Rasterizer {
             font,
             cache: HashMap::new(),
         }
+    }
+
+    pub fn ascent(&self, ft_size: u32) -> i32 {
+        let Some(metrics) = self.font.horizontal_line_metrics(ft_size as f32) else {
+            info!("No horizontal line metrics for font {:?}", self.font.name());
+            return ft_size as i32;
+        };
+
+        metrics.ascent as i32
     }
 
     pub fn rasterize(
