@@ -7,6 +7,7 @@ use std::time::Duration;
 
 const GOOD: Color = Color::rgb(0x60, 0xb4, 0x8a);
 const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
+const BAD: Color = Color::rgb(0xdc, 0xa3, 0xa3);
 
 #[derive(Debug, Deserialize)]
 #[serde(from = "shadow::Config")]
@@ -185,16 +186,25 @@ pub struct BatteryConfig {
     pub path: PathBuf,
     pub block: BlockConfig,
     pub color: ColorConfig,
+    pub format: Vec<BatteryFormatItem>,
+
+    // States.
     pub charging: BatteryStateConfig,
     pub full: BatteryStateConfig,
     pub idle: BatteryStateConfig,
     pub unknown: BatteryStateConfig,
-    pub format: Vec<BatteryFormatItem>,
+    pub low: LowBatteryStateConfig,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatteryStateConfig {
     pub color: ColorConfig,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LowBatteryStateConfig {
+    pub state: BatteryStateConfig,
+    pub threshold: u8,
 }
 
 impl BatteryConfig {
@@ -203,6 +213,10 @@ impl BatteryConfig {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             block: BlockConfig::default(),
             color: color.clone(),
+            format: vec![
+                BatteryFormatItem::Label("BAT".into()),
+                BatteryFormatItem::Capacity,
+            ],
             charging: BatteryStateConfig {
                 color: ColorConfig {
                     text: GOOD,
@@ -218,10 +232,15 @@ impl BatteryConfig {
             unknown: BatteryStateConfig {
                 color: color.clone(),
             },
-            format: vec![
-                BatteryFormatItem::Label("BAT".into()),
-                BatteryFormatItem::Capacity,
-            ],
+            low: LowBatteryStateConfig {
+                state: BatteryStateConfig {
+                    color: ColorConfig {
+                        text: BAD,
+                        ..*color
+                    },
+                },
+                threshold: 20,
+            },
         }
     }
 }
@@ -448,17 +467,26 @@ mod shadow {
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
+        pub format: Option<Vec<String>>,
         pub charging: BatteryStateConfig,
         pub full: BatteryStateConfig,
         pub idle: BatteryStateConfig,
         pub unknown: BatteryStateConfig,
-        pub format: Option<Vec<String>>,
+        pub low: LowBatteryStateConfig,
     }
 
     #[derive(Default, Deserialize)]
     #[serde(default, deny_unknown_fields)]
     pub(super) struct BatteryStateConfig {
         pub color: ColorConfig,
+    }
+
+    #[derive(Default, Deserialize)]
+    #[serde(default, deny_unknown_fields)]
+    pub(super) struct LowBatteryStateConfig {
+        #[serde(flatten)]
+        pub state: BatteryStateConfig,
+        pub threshold: Option<u8>,
     }
 
     #[derive(Default, Deserialize)]
@@ -563,20 +591,33 @@ mod shadow {
         }
     }
 
+    impl LowBatteryStateConfig {
+        pub(super) fn resolve(
+            self,
+            default: &super::LowBatteryStateConfig,
+        ) -> super::LowBatteryStateConfig {
+            super::LowBatteryStateConfig {
+                state: self.state.resolve(&default.state),
+                threshold: self.threshold.unwrap_or(default.threshold),
+            }
+        }
+    }
+
     impl BatteryConfig {
         pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
             super::BatteryConfig {
                 path: self.path.unwrap_or_else(|| default.path.clone()),
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
-                charging: self.charging.resolve(&default.charging),
-                full: self.full.resolve(&default.full),
-                idle: self.idle.resolve(&default.idle),
-                unknown: self.unknown.resolve(&default.unknown),
                 format: self
                     .format
                     .map(|v| v.into_iter().map(super::BatteryFormatItem::parse).collect())
                     .unwrap_or_else(|| default.format.clone()),
+                charging: self.charging.resolve(&default.charging),
+                full: self.full.resolve(&default.full),
+                idle: self.idle.resolve(&default.idle),
+                unknown: self.unknown.resolve(&default.unknown),
+                low: self.low.resolve(&default.low),
             }
         }
     }
@@ -831,6 +872,10 @@ mod tests {
                 BatteryFormatItem::Capacity,
             ]
         );
+        assert_eq!(b.low.threshold, 20);
+        assert_eq!(b.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.low.state.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
@@ -840,6 +885,10 @@ mod tests {
             [battery.0]
             path = "/sys/class/power_supply/BAT1/uevent"
             margins = [1, 2, 3, 4]
+
+            [battery.0.low]
+            threshold = 15
+            color.text = "#123456"
 
             [battery.0.color]
             background = "#aabbcc"
@@ -855,6 +904,10 @@ mod tests {
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(b.low.threshold, 15);
+        assert_eq!(b.low.state.color.text, Color::rgb(0x12, 0x34, 0x56));
+        assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.low.state.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]

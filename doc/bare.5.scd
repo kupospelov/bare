@@ -140,9 +140,14 @@ with the bar font size to avoid vertical shifts.
 		*\[capacity\]*
 			Current battery capacity percentage.
 
-	The battery has the *charging*, *full*, *idle*, and *unknown* states. Each
-	state defines a color section, e.g. *\[charging.color\]*. See *COLORS* for
-	more information.
+	The battery has the *charging*, *full*, *idle*, *low*, and *unknown* states.
+	Each state defines a color section, e.g. *\[charging.color\]*. See *COLORS*
+	for more information.
+
+	*low.threshold*=_threshold_
+		Low charge threshold.
+
+		Default: 20
 
 ## Time
 
@@ -223,6 +228,10 @@ The default colors are:
 :[ _inherited_
 |[ *\[battery.<name>.charging.color\]*
 :[ #60b48a
+:[ _inherited_
+:[ _inherited_
+|[ *\[battery.<name>.low.color\]*
+:[ #dca3a3
 :[ _inherited_
 :[ _inherited_
 

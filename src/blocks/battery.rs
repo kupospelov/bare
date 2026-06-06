@@ -70,14 +70,18 @@ impl Group {
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 enum BatteryState {
+    // Event states.
     #[default]
     Unknown,
     Discharging,
     Charging,
     Full,
     Idle,
+
+    // Calculated states.
+    Low,
 }
 
 impl BatteryState {
@@ -99,7 +103,7 @@ pub struct Battery {
     id: usize,
     name: String,
     state: BatteryState,
-    capacity: String,
+    capacity: u8,
     config: BatteryConfig,
 }
 
@@ -109,7 +113,7 @@ impl Battery {
             id,
             name: String::new(),
             state: BatteryState::default(),
-            capacity: String::new(),
+            capacity: 0,
             config: config.clone(),
         };
         match std::fs::read(&battery.config.path) {
@@ -131,18 +135,37 @@ impl Battery {
     }
 
     fn set_capacity(&mut self, c: String) -> bool {
-        if c == self.capacity {
+        let Ok(value) = c.parse() else {
+            error!(
+                "Battery {}: cannot parse battery capacity: {}",
+                self.name, c
+            );
+            return false;
+        };
+
+        if value == self.capacity {
             return false;
         }
-        debug!("Updated battery capacity: {}", c);
-        self.capacity = c;
+
+        debug!("Battery {}: updated battery capacity: {}", self.name, value);
+        self.capacity = value;
         true
     }
 
-    fn set_state(&mut self, state: BatteryState) -> bool {
+    // Make sure to update capacity first.
+    fn set_state(&mut self, s: BatteryState) -> bool {
+        let state = if s == BatteryState::Discharging && self.capacity <= self.config.low.threshold
+        {
+            BatteryState::Low
+        } else {
+            s
+        };
+
         if state == self.state {
             return false;
         }
+
+        debug!("Battery {}: updated battery state: {:?}", self.name, state);
         self.state = state;
         true
     }
@@ -154,18 +177,13 @@ impl Battery {
             BatteryState::Full => &self.config.full.color,
             BatteryState::Idle => &self.config.idle.color,
             BatteryState::Unknown => &self.config.unknown.color,
+            BatteryState::Low => &self.config.low.state.color,
         }
     }
 
     fn item_text(&self, item: &BatteryFormatItem) -> String {
         match item {
-            BatteryFormatItem::Capacity => {
-                if self.capacity.is_empty() {
-                    "??".into()
-                } else {
-                    self.capacity.clone()
-                }
-            }
+            BatteryFormatItem::Capacity => format!("{:02}", self.capacity),
             BatteryFormatItem::Label(s) => s.clone(),
         }
     }
@@ -186,16 +204,15 @@ impl Battery {
         }
 
         let mut dirty = false;
-        if let Some(status) = &event.status {
-            dirty |= self.set_state(BatteryState::from_status(status));
-        } else {
-            debug!("Battery {}: no reported status", name);
-        }
-
         if let Some(c) = &event.capacity {
             dirty |= self.set_capacity(c.clone());
         } else {
             debug!("Battery {}: no reported capacity", name);
+        }
+        if let Some(status) = &event.status {
+            dirty |= self.set_state(BatteryState::from_status(status));
+        } else {
+            debug!("Battery {}: no reported status", name);
         }
 
         dirty
