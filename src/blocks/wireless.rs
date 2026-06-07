@@ -2,7 +2,7 @@ use super::{Block, Instance};
 use crate::config::{ColorConfig, WirelessConfig, WirelessFormatItem};
 use crate::render;
 use crate::state::State;
-use crate::{debug, error};
+use crate::{debug, error, fail};
 use neli_wifi::Socket;
 use nix::net::if_::if_nametoindex;
 use nix::sys::socket::{
@@ -134,8 +134,14 @@ pub struct Wireless {
 
 impl Wireless {
     pub fn new(id: usize, config: &WirelessConfig) -> Self {
-        let interface =
-            if_nametoindex(config.interface.as_str()).expect("Failed to resolve interface") as i32;
+        let interface = match if_nametoindex(config.interface.as_str()) {
+            Ok(index) => index as i32,
+            Err(e) => fail!(
+                "Failed to get interface index for {}: {}",
+                config.interface,
+                e
+            ),
+        };
         Self {
             id,
             config: config.clone(),

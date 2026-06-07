@@ -19,6 +19,14 @@ pub fn set(level: Level) {
 }
 
 #[macro_export]
+macro_rules! fail {
+    ($($arg:tt)*) => {{
+        eprintln!($($arg)*);
+        std::process::exit(1);
+    }};
+}
+
+#[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
         if $level >= $crate::log::get() {

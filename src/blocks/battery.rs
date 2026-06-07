@@ -2,7 +2,7 @@ use super::{Block, Instance};
 use crate::config::{BatteryConfig, BatteryFormatItem, ColorConfig};
 use crate::render;
 use crate::state::State;
-use crate::{debug, error};
+use crate::{debug, error, fail};
 use nix::sys::socket::{
     self, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
@@ -129,7 +129,7 @@ impl Battery {
                     battery.set_state(BatteryState::from_status(&status));
                 }
             }
-            Err(e) => error!("Failed to read uevent file: {}", e),
+            Err(e) => fail!("Failed to read {}: {}", battery.config.path.display(), e),
         }
         battery
     }
