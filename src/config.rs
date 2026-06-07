@@ -184,6 +184,7 @@ impl VolumeFormatItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatteryConfig {
     pub path: PathBuf,
+    pub poll: bool,
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<BatteryFormatItem>,
@@ -211,6 +212,7 @@ impl BatteryConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
         Self {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
+            poll: true,
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![
@@ -464,6 +466,7 @@ mod shadow {
     #[serde(default)]
     pub(super) struct BatteryConfig {
         pub path: Option<std::path::PathBuf>,
+        pub poll: Option<bool>,
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -607,6 +610,7 @@ mod shadow {
         pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
             super::BatteryConfig {
                 path: self.path.unwrap_or_else(|| default.path.clone()),
+                poll: self.poll.unwrap_or(default.poll),
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
                 format: self

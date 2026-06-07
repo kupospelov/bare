@@ -73,7 +73,6 @@ with the bar font size to avoid vertical shifts.
 
 ## CPU
 
-*\[cpu.<name>\]*
 	Display the CPU status.
 
 	*format*=_\[token, ...\]_
@@ -87,7 +86,6 @@ with the bar font size to avoid vertical shifts.
 
 ## Wireless
 
-*\[wireless.<name>\]*
 	Display the status of a wireless interface.
 
 	*interface*=_name_
@@ -106,7 +104,6 @@ with the bar font size to avoid vertical shifts.
 
 ## Volume
 
-*\[volume.<name>\]*
 	Display the volume of the default PipeWire audio sink.
 
 	*format*=_\[token, ...\]_
@@ -123,13 +120,21 @@ with the bar font size to avoid vertical shifts.
 
 ## Battery
 
-*\[battery.<name>\]*
 	Display the battery capacity.
+
+	This block gets events from the netlink socket, but can optionally fall back
+	to polling if the socket-based events are unreliable.
 
 	*path*=_path_
 		Path to the _uevent_ file in sysfs.
 
 		Default: "/sys/class/power_supply/BAT0/uevent"
+
+	*poll*=_boolean_
+		Read the _uevent_ file on every bar update. If your system generates
+		reliable socket-based events, you can disable it.
+
+		Default: true
 
 	*format*=_\[token, ...\]_
 
@@ -151,7 +156,6 @@ with the bar font size to avoid vertical shifts.
 
 ## Time
 
-*\[time.<name>\]*
 	Display the current local time.
 
 	*format*=_\[token, ...\]_

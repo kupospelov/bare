@@ -194,6 +194,7 @@ impl State {
                 let mut dirty = Vec::new();
                 state.blocks.cpu.update(&mut dirty);
                 state.blocks.wireless.update(&mut dirty);
+                state.blocks.battery.update(&mut dirty);
                 for id in dirty {
                     state.mark_all_outputs_block_dirty(id);
                 }

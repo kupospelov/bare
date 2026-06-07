@@ -25,6 +25,17 @@ impl Group {
         Instance::Battery(n)
     }
 
+    pub fn update(&mut self, dirty: &mut Vec<usize>) {
+        for instance in &mut self.instances {
+            if instance.config.poll
+                && let Some(event) = instance.read_event_from_path(false)
+                && instance.update_state(&event)
+            {
+                dirty.push(instance.id);
+            }
+        }
+    }
+
     pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
         if self.instances.is_empty() {
             return;
@@ -43,7 +54,7 @@ impl Group {
                     loop {
                         match socket::recv(socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
                             Ok(n) => {
-                                let event = parse_event(buf[..n].split(|&b| b == 0));
+                                let event = parse_event(buf[..n].split(|&b| b == 0), true);
                                 for i in 0..state.blocks.battery.instances.len() {
                                     let id = {
                                         let instance = &mut state.blocks.battery.instances[i];
@@ -116,20 +127,13 @@ impl Battery {
             capacity: 0,
             config: config.clone(),
         };
-        match std::fs::read(&battery.config.path) {
-            Ok(bytes) => {
-                let event = parse_event(bytes.split(|&b| b == b'\n'));
-                battery.name = event.name.expect("No POWER_SUPPLY_NAME in the uevent file");
-                battery.set_capacity(
-                    event
-                        .capacity
-                        .expect("No POWER_SUPPLY_CAPACITY in the uevent file"),
-                );
-                if let Some(status) = event.status {
-                    battery.set_state(BatteryState::from_status(&status));
-                }
-            }
-            Err(e) => fail!("Failed to read {}: {}", battery.config.path.display(), e),
+        if let Some(event) = battery.read_event_from_path(true) {
+            let Some(name) = event.name.as_ref() else {
+                fail!("Failed to read battery name");
+            };
+
+            battery.name = name.clone();
+            battery.update_state(&event);
         }
         battery
     }
@@ -195,6 +199,16 @@ impl Battery {
         }
     }
 
+    fn read_event_from_path(&mut self, read_name: bool) -> Option<Event> {
+        match std::fs::read(&self.config.path) {
+            Ok(bytes) => Some(parse_event(bytes.split(|&b| b == b'\n'), read_name)),
+            Err(e) => {
+                error!("No event read from {}: {}", self.config.path.display(), e);
+                None
+            }
+        }
+    }
+
     fn update(&mut self, event: &Event) -> bool {
         let Some(name) = &event.name else {
             return false;
@@ -203,18 +217,21 @@ impl Battery {
             return false;
         }
 
+        self.update_state(event)
+    }
+
+    fn update_state(&mut self, event: &Event) -> bool {
         let mut dirty = false;
         if let Some(c) = &event.capacity {
             dirty |= self.set_capacity(c.clone());
         } else {
-            debug!("Battery {}: no reported capacity", name);
+            debug!("Battery {}: no reported capacity", self.name);
         }
         if let Some(status) = &event.status {
             dirty |= self.set_state(BatteryState::from_status(status));
         } else {
-            debug!("Battery {}: no reported status", name);
+            debug!("Battery {}: no reported status", self.name);
         }
-
         dirty
     }
 }
@@ -225,12 +242,12 @@ struct Event {
     capacity: Option<String>,
 }
 
-fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>) -> Event {
+fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>, read_name: bool) -> Event {
     let mut name = None;
     let mut status = None;
     let mut capacity = None;
     for f in fields {
-        if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
+        if read_name && let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
             name = std::str::from_utf8(v).ok().map(str::to_owned);
         } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_STATUS=") {
             status = std::str::from_utf8(v).ok().map(str::to_owned);
