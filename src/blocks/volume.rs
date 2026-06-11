@@ -112,9 +112,21 @@ impl Group {
                     },
                     types::interface::NODE => {
                         let Some(name) = props.get("node.name").map(|s| s.to_owned()) else {
-                            warning!("Node does not have a name");
+                            warning!("PipeWire: node does not have a name");
                             return;
                         };
+                        let Some(class) = props.get("media.class") else {
+                            debug!("PipeWire: node {} does not have a class", name);
+                            return;
+                        };
+
+                        // Match both Audio/Sink and Audio/Sink/Internal.
+                        let Some(suffix) = class.strip_prefix("Audio/Sink") else {
+                            return;
+                        };
+                        if suffix == "/Internal" {
+                            warning!("PipeWire: node {} is internal, its properties may not be displayed correctly", name);
+                        }
 
                         let object = registry.bind(id, interface, version).unwrap();
                         let node = object.downcast::<Node>().unwrap();
@@ -134,10 +146,12 @@ impl Group {
                         });
 
                         let proxy = object.downcast_proxy::<Node>().unwrap();
-                        proxy.add_listener(ProxyEvents {
-                            removed: some_closure!([] {}),
-                            ..Default::default()
-                        });
+                        proxy.add_listener(
+                            ProxyEvents {
+                                removed: some_closure!([] {}),
+                                ..Default::default()
+                            }
+                        );
                     },
                     _ => {
                         return;
