@@ -94,7 +94,7 @@ impl Group {
                     continue;
                 }
             };
-            if !instance.update(signal) {
+            if !instance.update(signal.map(dbm_to_quality)) {
                 continue;
             }
 
@@ -129,7 +129,7 @@ pub struct Wireless {
     id: usize,
     config: WirelessConfig,
     interface: i32,
-    signal: Option<i8>,
+    quality: Option<u8>,
 }
 
 impl Wireless {
@@ -146,24 +146,24 @@ impl Wireless {
             id,
             config: config.clone(),
             interface,
-            signal: None,
+            quality: None,
         }
     }
 
-    fn update(&mut self, signal: Option<i8>) -> bool {
-        if signal == self.signal {
+    fn update(&mut self, quality: Option<u8>) -> bool {
+        if quality == self.quality {
             return false;
         }
 
-        debug!("Updated wireless signal: {:?} dBm", signal);
-        self.signal = signal;
+        debug!("Updated wireless quality: {:?}", quality);
+        self.quality = quality;
         true
     }
 
     fn item_text(&self, item: &WirelessFormatItem) -> String {
         match item {
-            WirelessFormatItem::Quality => match self.signal {
-                Some(s) => dbm_to_quality(s).to_string(),
+            WirelessFormatItem::Quality => match self.quality {
+                Some(q) => q.to_string(),
                 None => "??".into(),
             },
             WirelessFormatItem::Label(s) => s.clone(),
@@ -197,7 +197,10 @@ impl Block for Wireless {
     }
 
     fn colors(&self) -> &ColorConfig {
-        &self.config.color
+        match self.quality {
+            Some(q) if q < self.config.low.threshold => &self.config.low.state.color,
+            _ => &self.config.color,
+        }
     }
 
     fn render(
@@ -207,7 +210,7 @@ impl Block for Wireless {
         region: render::Region,
         font_size: u32,
     ) {
-        let color = &self.config.color;
+        let color = self.colors();
         let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {

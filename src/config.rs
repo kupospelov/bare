@@ -268,6 +268,7 @@ pub struct WirelessConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<WirelessFormatItem>,
+    pub low: ThresholdStateConfig,
 }
 
 impl WirelessConfig {
@@ -280,6 +281,15 @@ impl WirelessConfig {
                 WirelessFormatItem::Label("NET".into()),
                 WirelessFormatItem::Quality,
             ],
+            low: ThresholdStateConfig {
+                state: StateConfig {
+                    color: ColorConfig {
+                        text: BAD,
+                        ..*color
+                    },
+                },
+                threshold: 50,
+            },
         }
     }
 }
@@ -510,6 +520,7 @@ mod shadow {
         pub block: BlockConfig,
         pub color: ColorConfig,
         pub format: Option<Vec<String>>,
+        pub low: ThresholdStateConfig,
     }
 
     #[derive(Default, Deserialize)]
@@ -648,6 +659,7 @@ mod shadow {
                             .collect()
                     })
                     .unwrap_or_else(|| default.format.clone()),
+                low: self.low.resolve(&default.low),
             }
         }
     }
@@ -976,6 +988,10 @@ mod tests {
                 WirelessFormatItem::Quality,
             ]
         );
+        assert_eq!(w.low.threshold, 50);
+        assert_eq!(w.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.low.state.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
@@ -985,6 +1001,10 @@ mod tests {
             [wireless.0]
             interface = "wlp3s0"
             margins = [1, 2, 3, 4]
+
+            [wireless.0.low]
+            threshold = 40
+            color.text = "#123456"
 
             [wireless.0.color]
             background = "#aabbcc"
@@ -1000,6 +1020,10 @@ mod tests {
         assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(w.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(w.low.threshold, 40);
+        assert_eq!(w.low.state.color.text, Color::rgb(0x12, 0x34, 0x56));
+        assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.low.state.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]

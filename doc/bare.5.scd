@@ -110,6 +110,14 @@ with the bar font size to avoid vertical shifts.
 		*\[quality\]*
 			Signal quality.
 
+	The wireless has the *low* state. The state defines a color section, e.g.
+	*\[low.color\]*. See *COLORS* for more information.
+
+	*low.threshold*=_threshold_
+		Low signal quality threshold.
+
+		Default: 50
+
 ## Volume
 
 	Display the volume of the default PipeWire audio sink.
@@ -235,6 +243,10 @@ The default colors are:
 :[ #77282d
 :[ #994c4c
 |[ *\[cpu.<name>.high.color\]*
+:[ #dca3a3
+:[ _inherited_
+:[ _inherited_
+|[ *\[wireless.<name>.low.color\]*
 :[ #dca3a3
 :[ _inherited_
 :[ _inherited_
