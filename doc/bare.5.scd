@@ -84,6 +84,14 @@ with the bar font size to avoid vertical shifts.
 		*\[usage\]*
 			Usage percentage.
 
+	The CPU has the *high* state. The state defines a color section, e.g.
+	*\[high.color\]*. See *COLORS* for more information.
+
+	*high.threshold*=_threshold_
+		High CPU usage threshold.
+
+		Default: 80
+
 ## Wireless
 
 	Display the status of a wireless interface.
@@ -226,6 +234,10 @@ The default colors are:
 :[ #ffffff
 :[ #77282d
 :[ #994c4c
+|[ *\[cpu.<name>.high.color\]*
+:[ #dca3a3
+:[ _inherited_
+:[ _inherited_
 |[ *\[volume.<name>.muted.color\]*
 :[ #dfaf8f
 :[ _inherited_

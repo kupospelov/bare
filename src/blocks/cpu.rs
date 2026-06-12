@@ -135,7 +135,11 @@ impl Block for Cpu {
     }
 
     fn colors(&self) -> &ColorConfig {
-        &self.config.color
+        if self.usage > self.config.high.threshold {
+            &self.config.high.state.color
+        } else {
+            &self.config.color
+        }
     }
 
     fn render(
@@ -145,7 +149,7 @@ impl Block for Cpu {
         region: render::Region,
         font_size: u32,
     ) {
-        let color = &self.config.color;
+        let color = self.colors();
         let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {

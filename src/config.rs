@@ -190,21 +190,21 @@ pub struct BatteryConfig {
     pub format: Vec<BatteryFormatItem>,
 
     // States.
-    pub charging: BatteryStateConfig,
-    pub full: BatteryStateConfig,
-    pub idle: BatteryStateConfig,
-    pub unknown: BatteryStateConfig,
-    pub low: LowBatteryStateConfig,
+    pub charging: StateConfig,
+    pub full: StateConfig,
+    pub idle: StateConfig,
+    pub unknown: StateConfig,
+    pub low: ThresholdStateConfig,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BatteryStateConfig {
+pub struct StateConfig {
     pub color: ColorConfig,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LowBatteryStateConfig {
-    pub state: BatteryStateConfig,
+pub struct ThresholdStateConfig {
+    pub state: StateConfig,
     pub threshold: u8,
 }
 
@@ -219,23 +219,23 @@ impl BatteryConfig {
                 BatteryFormatItem::Label("BAT".into()),
                 BatteryFormatItem::Capacity,
             ],
-            charging: BatteryStateConfig {
+            charging: StateConfig {
                 color: ColorConfig {
                     text: GOOD,
                     ..*color
                 },
             },
-            full: BatteryStateConfig {
+            full: StateConfig {
                 color: color.clone(),
             },
-            idle: BatteryStateConfig {
+            idle: StateConfig {
                 color: color.clone(),
             },
-            unknown: BatteryStateConfig {
+            unknown: StateConfig {
                 color: color.clone(),
             },
-            low: LowBatteryStateConfig {
-                state: BatteryStateConfig {
+            low: ThresholdStateConfig {
+                state: StateConfig {
                     color: ColorConfig {
                         text: BAD,
                         ..*color
@@ -342,6 +342,7 @@ pub struct CpuConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<CpuFormatItem>,
+    pub high: ThresholdStateConfig,
 }
 
 impl CpuConfig {
@@ -350,6 +351,15 @@ impl CpuConfig {
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage],
+            high: ThresholdStateConfig {
+                state: StateConfig {
+                    color: ColorConfig {
+                        text: BAD,
+                        ..*color
+                    },
+                },
+                threshold: 80,
+            },
         }
     }
 }
@@ -471,24 +481,24 @@ mod shadow {
         pub block: BlockConfig,
         pub color: ColorConfig,
         pub format: Option<Vec<String>>,
-        pub charging: BatteryStateConfig,
-        pub full: BatteryStateConfig,
-        pub idle: BatteryStateConfig,
-        pub unknown: BatteryStateConfig,
-        pub low: LowBatteryStateConfig,
+        pub charging: StateConfig,
+        pub full: StateConfig,
+        pub idle: StateConfig,
+        pub unknown: StateConfig,
+        pub low: ThresholdStateConfig,
     }
 
     #[derive(Default, Deserialize)]
     #[serde(default, deny_unknown_fields)]
-    pub(super) struct BatteryStateConfig {
+    pub(super) struct StateConfig {
         pub color: ColorConfig,
     }
 
     #[derive(Default, Deserialize)]
     #[serde(default, deny_unknown_fields)]
-    pub(super) struct LowBatteryStateConfig {
+    pub(super) struct ThresholdStateConfig {
         #[serde(flatten)]
-        pub state: BatteryStateConfig,
+        pub state: StateConfig,
         pub threshold: Option<u8>,
     }
 
@@ -518,6 +528,7 @@ mod shadow {
         pub block: BlockConfig,
         pub color: ColorConfig,
         pub format: Option<Vec<String>>,
+        pub high: ThresholdStateConfig,
     }
 
     #[derive(Default, Deserialize)]
@@ -583,23 +594,20 @@ mod shadow {
         }
     }
 
-    impl BatteryStateConfig {
-        pub(super) fn resolve(
-            self,
-            default: &super::BatteryStateConfig,
-        ) -> super::BatteryStateConfig {
-            super::BatteryStateConfig {
+    impl StateConfig {
+        pub(super) fn resolve(self, default: &super::StateConfig) -> super::StateConfig {
+            super::StateConfig {
                 color: self.color.resolve(&default.color),
             }
         }
     }
 
-    impl LowBatteryStateConfig {
+    impl ThresholdStateConfig {
         pub(super) fn resolve(
             self,
-            default: &super::LowBatteryStateConfig,
-        ) -> super::LowBatteryStateConfig {
-            super::LowBatteryStateConfig {
+            default: &super::ThresholdStateConfig,
+        ) -> super::ThresholdStateConfig {
+            super::ThresholdStateConfig {
                 state: self.state.resolve(&default.state),
                 threshold: self.threshold.unwrap_or(default.threshold),
             }
@@ -666,6 +674,7 @@ mod shadow {
                     .format
                     .map(|v| v.into_iter().map(super::CpuFormatItem::parse).collect())
                     .unwrap_or_else(|| default.format.clone()),
+                high: self.high.resolve(&default.high),
             }
         }
     }
@@ -829,6 +838,35 @@ mod tests {
         assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
         assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
+    }
+
+    #[test]
+    fn cpu_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [cpu.0]
+            margins = [1, 2, 3, 4]
+
+            [cpu.0.high]
+            threshold = 90
+            color.text = "#123456"
+
+            [cpu.0.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        let c = config.cpu.get("0").unwrap();
+        assert_eq!(c.block.margins, [1, 2, 3, 4]);
+        assert_eq!(c.block.borders, [0, 0, 0, 0]);
+        assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(c.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(c.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(c.high.threshold, 90);
+        assert_eq!(c.high.state.color.text, Color::rgb(0x12, 0x34, 0x56));
+        assert_eq!(c.high.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(c.high.state.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
