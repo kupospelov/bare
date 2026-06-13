@@ -13,7 +13,7 @@ fontconfig = "0.10"
 nix = { version = "0.31.2", features = ["fs", "net"] }
 calloop = "0.14"
 calloop-wayland-source = "0.4"
-time = { version = "0.3.47", features = ["local-offset"] }
+tz-rs = "0.7.3"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 pipewire-native = "0.1.4"

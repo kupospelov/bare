@@ -4,9 +4,9 @@ use super::{Block, Instance};
 use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
 use crate::render;
 use crate::state::State;
-use crate::{debug, error};
+use crate::{debug, error, fail};
 use calloop::timer::{TimeoutAction, Timer};
-use time::OffsetDateTime;
+use tz::{DateTime, UtcDateTime};
 
 pub struct Group {
     pub instances: Vec<Time>,
@@ -19,23 +19,17 @@ impl Group {
         }
     }
 
-    fn read_local() -> OffsetDateTime {
-        let now = match OffsetDateTime::now_local() {
-            Ok(local) => local,
-            Err(error) => {
-                error!("Cannot get local time: {:?}", error);
-                OffsetDateTime::now_utc()
-            }
-        };
-        debug!("Read local time: {}", now);
-        now
-    }
-
     pub fn add(&mut self, id: usize, config: &TimeConfig) -> Instance {
         let n = self.instances.len();
+        let now = match UtcDateTime::UNIX_EPOCH.project(config.timezone.as_ref()) {
+            Ok(t) => t,
+            Err(e) => {
+                fail!("Failed to project time to timezone: {}", e);
+            }
+        };
         self.instances.push(Time {
             id,
-            now: time::OffsetDateTime::UNIX_EPOCH,
+            now,
             config: config.clone(),
         });
         Instance::Time(n)
@@ -48,11 +42,22 @@ impl Group {
 
         handle
             .insert_source(Timer::immediate(), |instant, _, state| {
-                let now = Self::read_local();
+                let utc = match UtcDateTime::now() {
+                    Ok(t) => {
+                        debug!("Read UTC time: {}", t);
+                        t
+                    }
+                    Err(e) => {
+                        error!("Cannot read UTC time: {}", e);
+                        return TimeoutAction::Drop;
+                    }
+                };
+
                 for i in 0..state.blocks.time.instances.len() {
                     let id = {
                         let instance = &mut state.blocks.time.instances[i];
-                        if !instance.update(now) {
+
+                        if !instance.update(utc) {
                             continue;
                         }
                         instance.id
@@ -61,7 +66,7 @@ impl Group {
                     state.mark_all_outputs_block_dirty(id);
                 }
 
-                TimeoutAction::ToInstant(instant + Duration::from_secs(60 - now.second() as u64))
+                TimeoutAction::ToInstant(instant + Duration::from_secs(60 - utc.second() as u64))
             })
             .expect("Failed to insert time group timer");
     }
@@ -69,7 +74,7 @@ impl Group {
 
 pub struct Time {
     id: usize,
-    now: time::OffsetDateTime,
+    now: DateTime,
     config: TimeConfig,
 }
 
@@ -78,8 +83,8 @@ impl Time {
         match item {
             TimeFormatItem::Hour => format!("{:02}", self.now.hour()),
             TimeFormatItem::Minute => format!("{:02}", self.now.minute()),
-            TimeFormatItem::Day => format!("{:02}", self.now.day()),
-            TimeFormatItem::Month => format!("{:02}", u8::from(self.now.month())),
+            TimeFormatItem::Day => format!("{:02}", self.now.month_day()),
+            TimeFormatItem::Month => format!("{:02}", self.now.month()),
             TimeFormatItem::Label(s) => s.clone(),
         }
     }
@@ -91,11 +96,19 @@ impl Time {
         }
     }
 
-    fn update(&mut self, now: time::OffsetDateTime) -> bool {
+    fn update(&mut self, utc: UtcDateTime) -> bool {
+        let now = match utc.project(self.config.timezone.as_ref()) {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to project time to timezone: {}", e);
+                return false;
+            }
+        };
+
         let changed = self.config.format.iter().any(|item| match item {
             TimeFormatItem::Hour => self.now.hour() != now.hour(),
             TimeFormatItem::Minute => self.now.minute() != now.minute(),
-            TimeFormatItem::Day => self.now.day() != now.day(),
+            TimeFormatItem::Day => self.now.month_day() != now.month_day(),
             TimeFormatItem::Month => self.now.month() != now.month(),
             TimeFormatItem::Label(_) => false,
         });

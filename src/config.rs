@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::debug;
+use crate::{debug, warning};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -311,6 +311,7 @@ impl WirelessFormatItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeConfig {
+    pub timezone: tz::TimeZone,
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<TimeFormatItem>,
@@ -318,7 +319,16 @@ pub struct TimeConfig {
 
 impl TimeConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
+        let timezone = match tz::TimeZone::local() {
+            Ok(tz) => tz,
+            Err(e) => {
+                warning!("Cannot get local time: {}", e);
+                tz::TimeZone::utc()
+            }
+        };
+
         Self {
+            timezone,
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![TimeFormatItem::Hour, TimeFormatItem::Minute],
@@ -526,6 +536,7 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default)]
     pub(super) struct TimeConfig {
+        pub timezone: Option<String>,
         #[serde(flatten)]
         pub block: BlockConfig,
         pub color: ColorConfig,
@@ -666,7 +677,19 @@ mod shadow {
 
     impl TimeConfig {
         pub(super) fn resolve(self, default: &super::TimeConfig) -> super::TimeConfig {
+            let timezone = if let Some(tz_name) = &self.timezone {
+                match tz::TimeZone::from_posix_tz(tz_name) {
+                    Ok(tz) => tz,
+                    Err(e) => {
+                        crate::fail!("Cannot read timezone: {}", e);
+                    }
+                }
+            } else {
+                default.timezone.clone()
+            };
+
             super::TimeConfig {
+                timezone,
                 block: self.block.resolve(&default.block),
                 color: self.color.resolve(&default.color),
                 format: self
@@ -1052,6 +1075,7 @@ mod tests {
             r###"
             [time.0]
             margins = [1, 2, 3, 4]
+            timezone = "US/Pacific"
 
             [time.0.color]
             background = "#aabbcc"
@@ -1060,6 +1084,10 @@ mod tests {
         .unwrap();
 
         let t = config.time.get("0").unwrap();
+        assert_eq!(
+            t.timezone,
+            tz::TimeZone::from_posix_tz("US/Pacific").unwrap()
+        );
         assert_eq!(t.block.margins, [1, 2, 3, 4]);
         assert_eq!(t.block.borders, [0, 0, 0, 0]);
         assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -1068,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn time_format_default() {
+    fn time_defaults() {
         let config: Config = toml::from_str(
             r###"
             [time.0]
@@ -1077,6 +1105,7 @@ mod tests {
         .unwrap();
 
         let t = config.time.get("0").unwrap();
+        assert_eq!(t.timezone, tz::TimeZone::local().unwrap());
         assert_eq!(t.format, vec![TimeFormatItem::Hour, TimeFormatItem::Minute]);
     }
 

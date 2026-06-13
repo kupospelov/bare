@@ -172,7 +172,13 @@ with the bar font size to avoid vertical shifts.
 
 ## Time
 
-	Display the current local time.
+	Display the current time.
+
+	*timezone*=_timezone_
+		Timezone string as described in the POSIX documentation of the TZ
+		environment variable. See *tzname(1)* for more information.
+
+		Default: local
 
 	*format*=_\[token, ...\]_
 
@@ -274,7 +280,8 @@ blocks = [
 	"volume.0",
 	"battery.0",
 	"time.date",
-	"time.clock",
+	"time.cet",
+	"time.local",
 ]
 
 [workspace]
@@ -298,7 +305,11 @@ format = ["BAT", "[capacity]"]
 [time.date]
 format = ["[day]", "[month]"]
 
-[time.clock]
+[time.cet]
+timezone = "Europe/Paris"
+format = ["CET", "[hour]", "[minute]"]
+
+[time.local]
 format = ["[hour]", "[minute]"]
 ```
 
