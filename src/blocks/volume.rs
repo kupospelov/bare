@@ -269,7 +269,7 @@ impl Volume {
         match item {
             VolumeFormatItem::Volume => match self.sink.percent {
                 Some(p) => format!("{}", p),
-                None => "??".into(),
+                None => "...".into(),
             },
             VolumeFormatItem::Label(s) => s.clone(),
         }

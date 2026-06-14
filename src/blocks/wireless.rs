@@ -164,7 +164,7 @@ impl Wireless {
         match item {
             WirelessFormatItem::Quality => match self.quality {
                 Some(q) => q.to_string(),
-                None => "??".into(),
+                None => "...".into(),
             },
             WirelessFormatItem::Label(s) => s.clone(),
         }
@@ -198,8 +198,8 @@ impl Block for Wireless {
 
     fn colors(&self) -> &ColorConfig {
         match self.quality {
-            Some(q) if q < self.config.low.threshold => &self.config.low.state.color,
-            _ => &self.config.color,
+            Some(q) if q > self.config.low.threshold => &self.config.color,
+            _ => &self.config.low.state.color,
         }
     }
 
