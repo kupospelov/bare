@@ -406,8 +406,7 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load() -> Self {
-        let path = config_path();
+    pub fn load(path: PathBuf) -> Self {
         let contents = match std::fs::read_to_string(&path) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -421,7 +420,7 @@ impl Config {
     }
 }
 
-fn config_path() -> PathBuf {
+pub fn default_config_path() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)

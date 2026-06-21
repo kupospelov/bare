@@ -10,17 +10,25 @@ mod render;
 mod state;
 mod wayland;
 
+use std::path::PathBuf;
+
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use clap::Parser;
+use config::Config;
 use init::Init;
 use state::State;
 use wayland_client::Connection;
 
 #[derive(Parser)]
 struct Arguments {
+    /// Enable debug output.
     #[arg(short = 'd', long = "debug")]
     debug: bool,
+
+    /// Set the config file location.
+    #[arg(short = 'c', long = "config", value_name = "PATH")]
+    config: Option<PathBuf>,
 }
 
 fn main() {
@@ -46,7 +54,8 @@ fn main() {
     };
 
     // Move globals to State and create outputs.
-    let mut state = State::new(config::Config::load(), qh.clone(), init);
+    let config = Config::load(args.config.unwrap_or_else(config::default_config_path));
+    let mut state = State::new(config, qh.clone(), init);
     let _ = conn.display().get_registry(&qh, ());
     event_queue.roundtrip(&mut state).unwrap();
 

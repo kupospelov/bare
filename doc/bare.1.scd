@@ -18,8 +18,11 @@ the layer-shell and ext-workspace-v1 protocols.
 *-h, --help*
 	Show help message and quit.
 
+*-c, --config*
+	Set the config file location.
+
 *-d, --debug*
-	Enable debug logging.
+	Enable debug output.
 
 The bar is configured via a configuration file as described in *bare*(5).
 
