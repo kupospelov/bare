@@ -399,8 +399,8 @@ mod tests {
     fn make_renderer() -> Renderer {
         crate::log::set(crate::log::Level::Error);
 
-        let (font, size) = font::load("Sans Bold");
-        Renderer::new(Rasterizer::new(font), size, BG)
+        let fonts = font::load("Sans Bold");
+        Renderer::new(Rasterizer::new(fonts), 10, BG)
     }
 
     fn glyph_bounds(buf: &[u8]) -> Option<(i32, i32, i32, i32)> {

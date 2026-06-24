@@ -64,11 +64,12 @@ pub struct State {
 
 impl State {
     pub fn new(config: Config, qh: QueueHandle<State>, init: Init) -> Self {
-        let (font, font_size) = font::load(&config.bar.font);
+        let fonts = font::load(&config.bar.font);
+        let size = fonts[0].size;
         let blocks = Blocks::new(&config);
         let renderer = Renderer::new(
-            raster::Rasterizer::new(font),
-            font_size,
+            raster::Rasterizer::new(fonts),
+            size,
             config.bar.color.background,
         );
         Self {

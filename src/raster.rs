@@ -1,6 +1,6 @@
 use crate::color::Color;
-use crate::info;
-use fontdue::Font;
+use crate::font;
+use crate::{info, warning};
 use std::collections::HashMap;
 
 macro_rules! blend {
@@ -27,21 +27,24 @@ pub struct Bitmap {
 }
 
 pub struct Rasterizer {
-    font: Font,
+    fonts: Vec<font::Definition>,
     cache: HashMap<CacheKey, Bitmap>,
 }
 
 impl Rasterizer {
-    pub fn new(font: Font) -> Self {
+    pub fn new(fonts: Vec<font::Definition>) -> Self {
         Self {
-            font,
+            fonts,
             cache: HashMap::new(),
         }
     }
 
     pub fn ascent(&self, ft_size: u32) -> i32 {
-        let Some(metrics) = self.font.horizontal_line_metrics(ft_size as f32) else {
-            info!("No horizontal line metrics for font {:?}", self.font.name());
+        let Some(metrics) = self.fonts[0].font.horizontal_line_metrics(ft_size as f32) else {
+            info!(
+                "No horizontal line metrics for font {:?}",
+                self.fonts[0].font.name()
+            );
             return ft_size as i32;
         };
 
@@ -62,7 +65,18 @@ impl Rasterizer {
             bg_color,
         };
         self.cache.entry(key).or_insert_with(|| {
-            let (metrics, bitmap) = self.font.rasterize(c, ft_size as f32);
+            let (metrics, bitmap) = {
+                let definition = self
+                    .fonts
+                    .iter()
+                    .find(|d| d.font.lookup_glyph_index(c) > 0)
+                    .unwrap_or_else(|| {
+                        warning!("No configured font can render {}", c);
+                        &self.fonts[0]
+                    });
+                definition.font.rasterize(c, ft_size as f32)
+            };
+
             let mut pixels = vec![0u8; metrics.width * metrics.height * 4];
             let (chunks, _) = pixels.as_chunks_mut::<4>();
             for (chunk, alpha) in chunks.iter_mut().zip(bitmap) {
