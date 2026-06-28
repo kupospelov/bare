@@ -124,7 +124,7 @@ impl State {
         );
         output.update_layout(
             &self.blocks,
-            self.renderer.font_size,
+            &self.renderer.rasterizer,
             self.config.bar.separator,
         );
         self.outputs.insert(id, output);
@@ -402,7 +402,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                         .set_scale(&state.config, state.renderer.font_size, factor);
                     o.update_layout(
                         &state.blocks,
-                        state.renderer.font_size,
+                        &state.renderer.rasterizer,
                         state.config.bar.separator,
                     );
                 }

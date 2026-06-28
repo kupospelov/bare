@@ -1,6 +1,9 @@
 use super::{Block, Instance};
+use crate::blocks::FormatItem;
 use crate::config::{ColorConfig, WirelessConfig, WirelessFormatItem};
+use crate::raster::Rasterizer;
 use crate::render;
+use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, fail};
 use neli_wifi::Socket;
@@ -169,25 +172,11 @@ impl Wireless {
             WirelessFormatItem::Label(s) => s.clone(),
         }
     }
-
-    fn item_height(item: &WirelessFormatItem, font_size: u32) -> u32 {
-        match item {
-            WirelessFormatItem::Quality => font_size,
-            WirelessFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
-        }
-    }
 }
 
 impl Block for Wireless {
-    fn layout(&self, font_size: u32, scale: i32) -> render::BlockLayout {
-        let items = &self.config.format;
-        let separator = super::inner_margin(font_size);
-        let gaps = items.len().saturating_sub(1) as i32;
-        let content: i32 = items
-            .iter()
-            .map(|i| Self::item_height(i, font_size) as i32)
-            .sum::<i32>()
-            + gaps * separator;
+    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
+        let content = super::content_height(&self.config.format, rasterizer, scale);
         let block = self.config.block.scaled(scale);
         render::BlockLayout {
             content,
@@ -205,16 +194,15 @@ impl Block for Wireless {
 
     fn render(
         &mut self,
-        renderer: &mut crate::render::Renderer,
+        renderer: &mut Renderer,
         map: &mut render::Map<'_>,
         region: render::Region,
-        font_size: u32,
+        scale: i32,
     ) {
         let color = self.colors();
-        let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {
-            let h = Self::item_height(item, font_size);
+            let h = item.height(&renderer.rasterizer, scale);
             let text = self.item_text(item);
             renderer.render_text(
                 map,
@@ -229,7 +217,7 @@ impl Block for Wireless {
                 color.background,
                 h,
             );
-            y += h as i32 + margin;
+            y += h as i32 + super::inner_margin(h);
         }
     }
 }

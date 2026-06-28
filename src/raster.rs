@@ -96,4 +96,28 @@ impl Rasterizer {
             }
         })
     }
+
+    pub fn get_default_font_size(&self, scale: i32) -> u32 {
+        self.fonts[0].size * scale as u32
+    }
+
+    pub fn get_font_size(&self, text: &str, scale: i32) -> u32 {
+        let (mut max_size, mut len) = (0, 0);
+        for c in text.chars() {
+            let s = self
+                .fonts
+                .iter()
+                .find(|d| d.font.lookup_glyph_index(c) > 0)
+                .map(|d| d.size)
+                .unwrap_or(self.fonts[0].size);
+            max_size = max_size.max(s);
+            len += 1;
+        }
+
+        if len > 2 {
+            max_size * scale as u32 * 2 / len
+        } else {
+            max_size * scale as u32
+        }
+    }
 }

@@ -1,3 +1,4 @@
+use crate::blocks::FormatItem;
 use crate::color::Color;
 use crate::{debug, warning};
 use serde::Deserialize;
@@ -181,6 +182,16 @@ impl VolumeFormatItem {
     }
 }
 
+impl FormatItem for VolumeFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let VolumeFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatteryConfig {
     pub path: PathBuf,
@@ -262,6 +273,16 @@ impl BatteryFormatItem {
     }
 }
 
+impl FormatItem for BatteryFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let BatteryFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct WirelessConfig {
     pub interface: String,
@@ -305,6 +326,16 @@ impl WirelessFormatItem {
         match s.as_str() {
             "[quality]" => Self::Quality,
             _ => Self::Label(s),
+        }
+    }
+}
+
+impl FormatItem for WirelessFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let WirelessFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
         }
     }
 }
@@ -357,6 +388,16 @@ impl TimeFormatItem {
     }
 }
 
+impl FormatItem for TimeFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let TimeFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CpuConfig {
     pub block: BlockConfig,
@@ -395,6 +436,16 @@ impl CpuFormatItem {
         match s.as_str() {
             "[usage]" => Self::Usage,
             _ => Self::Label(s),
+        }
+    }
+}
+
+impl FormatItem for CpuFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let CpuFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
         }
     }
 }

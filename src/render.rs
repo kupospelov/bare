@@ -361,7 +361,7 @@ impl Renderer {
                         w: inner.w,
                         h: layout.content.max(0) as u32,
                     },
-                    font_size,
+                    scale,
                 );
             }
             y -= output.layout.separator as i32;

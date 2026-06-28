@@ -1,6 +1,9 @@
 use super::{Block, Instance};
+use crate::blocks::FormatItem;
 use crate::config::{BatteryConfig, BatteryFormatItem, ColorConfig};
+use crate::raster::Rasterizer;
 use crate::render;
+use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, fail};
 use nix::sys::socket::{
@@ -192,13 +195,6 @@ impl Battery {
         }
     }
 
-    fn item_height(item: &BatteryFormatItem, font_size: u32) -> u32 {
-        match item {
-            BatteryFormatItem::Capacity => font_size,
-            BatteryFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
-        }
-    }
-
     fn read_event_from_path(&mut self, read_name: bool) -> Option<Event> {
         match std::fs::read(&self.config.path) {
             Ok(bytes) => Some(parse_event(bytes.split(|&b| b == b'\n'), read_name)),
@@ -274,15 +270,8 @@ fn open_uevent_socket() -> nix::Result<OwnedFd> {
 }
 
 impl Block for Battery {
-    fn layout(&self, font_size: u32, scale: i32) -> render::BlockLayout {
-        let items = &self.config.format;
-        let separator = super::inner_margin(font_size);
-        let gaps = items.len().saturating_sub(1) as i32;
-        let content: i32 = items
-            .iter()
-            .map(|i| Self::item_height(i, font_size) as i32)
-            .sum::<i32>()
-            + gaps * separator;
+    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
+        let content = super::content_height(&self.config.format, rasterizer, scale);
         let block = self.config.block.scaled(scale);
         render::BlockLayout {
             content,
@@ -297,16 +286,15 @@ impl Block for Battery {
 
     fn render(
         &mut self,
-        renderer: &mut crate::render::Renderer,
+        renderer: &mut Renderer,
         map: &mut render::Map<'_>,
         region: render::Region,
-        font_size: u32,
+        scale: i32,
     ) {
         let color = self.state_color();
-        let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {
-            let h = Self::item_height(item, font_size);
+            let h = item.height(&renderer.rasterizer, scale);
             let text = self.item_text(item);
             renderer.render_text(
                 map,
@@ -321,7 +309,7 @@ impl Block for Battery {
                 color.background,
                 h,
             );
-            y += h as i32 + margin;
+            y += h as i32 + super::inner_margin(h);
         }
     }
 }

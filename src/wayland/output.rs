@@ -53,8 +53,13 @@ impl Output {
         }
     }
 
-    pub fn update_layout(&mut self, blocks: &Blocks, font_size: u32, separator: u32) {
-        let font_size = font_size * self.scale as u32;
+    pub fn update_layout(
+        &mut self,
+        blocks: &Blocks,
+        rasterizer: &crate::raster::Rasterizer,
+        separator: u32,
+    ) {
+        let font_size = rasterizer.get_default_font_size(self.scale);
         let separator = separator * self.scale as u32;
         self.layout = Layout {
             font_size,
@@ -62,7 +67,7 @@ impl Output {
             blocks: blocks
                 .order
                 .iter()
-                .map(|r| blocks.resolve(*r).layout(font_size, self.scale))
+                .map(|r| blocks.resolve(*r).layout(rasterizer, self.scale))
                 .collect(),
         };
     }

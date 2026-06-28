@@ -1,8 +1,11 @@
 use std::time::Duration;
 
 use super::{Block, Instance};
+use crate::blocks::FormatItem;
 use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
+use crate::raster::Rasterizer;
 use crate::render;
+use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, fail};
 use calloop::timer::{TimeoutAction, Timer};
@@ -89,13 +92,6 @@ impl Time {
         }
     }
 
-    fn item_height(item: &TimeFormatItem, font_size: u32) -> u32 {
-        match item {
-            TimeFormatItem::Label(s) => font_size * 2 / s.len().max(1) as u32,
-            _ => font_size,
-        }
-    }
-
     fn update(&mut self, utc: UtcDateTime) -> bool {
         let now = match utc.project(self.config.timezone.as_ref()) {
             Ok(t) => t,
@@ -118,15 +114,8 @@ impl Time {
 }
 
 impl Block for Time {
-    fn layout(&self, font_size: u32, scale: i32) -> render::BlockLayout {
-        let items = &self.config.format;
-        let separator = super::inner_margin(font_size);
-        let gaps = items.len().saturating_sub(1) as i32;
-        let content: i32 = items
-            .iter()
-            .map(|i| Self::item_height(i, font_size) as i32)
-            .sum::<i32>()
-            + gaps * separator;
+    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
+        let content = super::content_height(&self.config.format, rasterizer, scale);
         let block = self.config.block.scaled(scale);
         render::BlockLayout {
             content,
@@ -141,16 +130,15 @@ impl Block for Time {
 
     fn render(
         &mut self,
-        renderer: &mut crate::render::Renderer,
+        renderer: &mut Renderer,
         map: &mut render::Map<'_>,
         region: render::Region,
-        font_size: u32,
+        scale: i32,
     ) {
         let color = &self.config.color;
-        let margin = super::inner_margin(font_size);
         let mut y = region.y;
         for item in &self.config.format {
-            let h = Self::item_height(item, font_size);
+            let h = item.height(&renderer.rasterizer, scale);
             let text = self.item_text(item);
             renderer.render_text(
                 map,
@@ -165,7 +153,7 @@ impl Block for Time {
                 color.background,
                 h,
             );
-            y += h as i32 + margin;
+            y += h as i32 + super::inner_margin(h);
         }
     }
 }

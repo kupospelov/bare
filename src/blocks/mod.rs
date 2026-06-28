@@ -5,13 +5,45 @@ pub mod volume;
 pub mod wireless;
 pub mod workspaces;
 
-use crate::config::{
-    BatteryConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig, WirelessConfig,
+use crate::{
+    config::{
+        BatteryConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig, WirelessConfig,
+    },
+    raster::Rasterizer,
+    render,
+    render::Renderer,
 };
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
+pub trait FormatItem {
+    fn label(&self) -> Option<&str>;
+
+    fn height(&self, rasterizer: &Rasterizer, scale: i32) -> u32 {
+        if let Some(s) = self.label() {
+            rasterizer.get_font_size(s, scale)
+        } else {
+            rasterizer.get_default_font_size(scale)
+        }
+    }
+}
+
+pub fn content_height<T: FormatItem>(items: &[T], rasterizer: &Rasterizer, scale: i32) -> i32 {
+    let len = items.len();
+    if len < 1 {
+        return 0;
+    }
+
+    let mut height = items[len - 1].height(rasterizer, scale);
+    for item in items.iter().take(len - 1) {
+        let h = item.height(rasterizer, scale);
+        height += h;
+        height += inner_margin(h) as u32;
+    }
+    height as i32
+}
+
 pub fn inner_margin(font_size: u32) -> i32 {
-    font_size as i32 / 5
+    font_size as i32 / 3
 }
 
 #[derive(Clone, Copy)]
@@ -131,7 +163,7 @@ impl AsFd for Fd {
 
 pub trait Block {
     /// The block layout.
-    fn layout(&self, font_size: u32, scale: i32) -> crate::render::BlockLayout;
+    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout;
 
     /// The block colors.
     fn colors(&self) -> &ColorConfig;
@@ -139,10 +171,10 @@ pub trait Block {
     /// Render into the region of `mapping`.
     fn render(
         &mut self,
-        renderer: &mut crate::render::Renderer,
-        map: &mut crate::render::Map<'_>,
-        region: crate::render::Region,
-        font_size: u32,
+        renderer: &mut Renderer,
+        map: &mut render::Map<'_>,
+        region: render::Region,
+        scale: i32,
     );
 }
 
