@@ -13,8 +13,9 @@ The configuration file is located at *$XDG\_CONFIG\_HOME/bare/config.toml* or at
 
 The *\[bar\]* section configures the bar.
 
-*font*=_font_
-	Set font to _font_, as a Pango font description.
+*fonts*=_fonts_
+	Set fonts to _fonts_, as a Pango font description. Multiple comma-separated
+	fonts can be specified. Secondary fonts are only used for block labels.
 
 	Default: "Sans Bold 9"
 
@@ -37,7 +38,7 @@ The *\[bar\]* section configures the bar.
 	Define the blocks to render, from top to bottom. Each entry has the form
 	_type.name_. See *BLOCKS* for more information.
 
-	Default: \["volume.0", "battery.0", "time.0"\]
+	Default: \["cpu.0", "volume.0", "time.0"\]
 
 *color*=_colors_
 	Default colors used by blocks that do not override them. See *COLORS* for
@@ -273,7 +274,7 @@ The default colors are:
 
 ```
 [bar]
-font = "Sans Bold 9"
+fonts = "Sans Bold 9, Font Awesome 7 Free Solid 10"
 width = 28
 separator = 14
 blocks = [
@@ -301,6 +302,7 @@ text = "#dfaf8f"
 
 [battery.0]
 format = ["BAT", "[capacity]"]
+poll = false
 
 [time.date]
 format = ["[day]", "[month]"]

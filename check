@@ -1,5 +1,6 @@
 #!/bin/sh -e
 
+./doc/check
 cargo fmt --all -- --check
 cargo clippy --all --all-targets
 cargo test

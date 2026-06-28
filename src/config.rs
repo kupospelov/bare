@@ -25,7 +25,7 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 #[serde(from = "shadow::BarConfig")]
 pub struct BarConfig {
-    pub font: String,
+    pub fonts: String,
     pub width: u32,
     pub interval: Duration,
     pub separator: u32,
@@ -36,11 +36,11 @@ pub struct BarConfig {
 impl Default for BarConfig {
     fn default() -> Self {
         Self {
-            font: "Sans Bold 9".into(),
+            fonts: "Sans Bold 9".into(),
             width: 28,
             interval: Duration::from_secs(10),
             separator: 14,
-            blocks: vec!["volume.0".into(), "battery.0".into(), "time.0".into()],
+            blocks: vec!["cpu.0".into(), "volume.0".into(), "time.0".into()],
             color: ColorConfig {
                 text: Color::rgb(0x64, 0x64, 0x64),
                 background: Color::rgb(0x0, 0x0, 0x0),
@@ -502,7 +502,7 @@ mod shadow {
     #[derive(Default, Deserialize)]
     #[serde(default, deny_unknown_fields)]
     pub(super) struct BarConfig {
-        pub font: Option<String>,
+        pub fonts: Option<String>,
         pub width: Option<u32>,
         pub interval: Option<u64>,
         pub separator: Option<u32>,
@@ -830,7 +830,7 @@ impl From<shadow::BarConfig> for BarConfig {
     fn from(shadow: shadow::BarConfig) -> Self {
         let d = BarConfig::default();
         Self {
-            font: shadow.font.unwrap_or(d.font),
+            fonts: shadow.fonts.unwrap_or(d.fonts),
             width: shadow.width.unwrap_or(d.width),
             interval: shadow
                 .interval
@@ -855,7 +855,7 @@ mod tests {
         assert_eq!(b.width, 28);
         assert_eq!(b.interval, Duration::from_secs(10));
         assert_eq!(b.separator, 14);
-        assert_eq!(b.blocks, ["volume.0", "battery.0", "time.0"]);
+        assert_eq!(b.blocks, ["cpu.0", "volume.0", "time.0"]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0, 0, 0));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
@@ -887,6 +887,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [bar]
+            fonts = "Monospace 10"
             interval = 5
 
             [bar.color]
@@ -896,6 +897,7 @@ mod tests {
         .unwrap();
 
         let b = config.bar;
+        assert_eq!(b.fonts, "Monospace 10");
         assert_eq!(b.interval, Duration::from_secs(5));
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
