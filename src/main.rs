@@ -5,6 +5,7 @@ mod damage;
 mod font;
 mod init;
 mod log;
+mod map;
 mod raster;
 mod render;
 mod state;

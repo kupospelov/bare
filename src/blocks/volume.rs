@@ -1,6 +1,7 @@
 use super::{Block, Fd, Instance};
 use crate::blocks::FormatItem;
 use crate::config::{ColorConfig, VolumeConfig, VolumeFormatItem};
+use crate::map::Map;
 use crate::raster::Rasterizer;
 use crate::render;
 use crate::render::Renderer;
@@ -301,7 +302,7 @@ impl Block for Volume {
     fn render(
         &mut self,
         renderer: &mut Renderer,
-        map: &mut render::Map<'_>,
+        map: &mut dyn Map,
         region: render::Region,
         scale: i32,
     ) {

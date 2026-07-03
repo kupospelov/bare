@@ -1,6 +1,9 @@
 use crate::blocks::Blocks;
+use crate::blocks::workspaces::Workspaces;
 use crate::color::Color;
 use crate::config::BlockConfig;
+use crate::map::Map;
+use crate::map::Mem;
 use crate::raster::Rasterizer;
 use crate::wayland::buffer::Buffer;
 use crate::wayland::output::Output;
@@ -72,33 +75,6 @@ pub struct Layout {
     pub blocks: Vec<BlockLayout>,
 }
 
-pub struct Map<'a> {
-    pub data: &'a mut [u8],
-    pub width: u32,
-    pub height: u32,
-}
-
-impl<'a> Map<'a> {
-    pub fn new(data: &'a mut [u8], height: u32) -> Self {
-        let width = data.len() as u32 / 4 / height;
-        Self {
-            data,
-            width,
-            height,
-        }
-    }
-
-    pub fn clear(&mut self, range: Range, color: Color) {
-        if range.end <= range.start {
-            return;
-        }
-        let stride = self.width as usize;
-        let bgra = color.bgra();
-        let (chunks, _) = self.data.as_chunks_mut::<4>();
-        chunks[range.start as usize * stride..range.end as usize * stride].fill(bgra);
-    }
-}
-
 pub struct Renderer {
     pub rasterizer: Rasterizer,
     pub font_size: u32,
@@ -114,24 +90,9 @@ impl Renderer {
         }
     }
 
-    pub fn fill_rect(&self, map: &mut Map<'_>, region: Region, color: Color) {
-        let y = region.y as usize..(region.y + region.h as i32) as usize;
-        let x = region.x as usize..(region.x + region.w as i32) as usize;
-        if y.is_empty() || x.is_empty() {
-            return;
-        }
-
-        let bgra = color.bgra();
-        let stride = map.width as usize;
-        let (chunks, _) = map.data.as_chunks_mut::<4>();
-        for row in y {
-            chunks[row * stride + x.start..row * stride + x.end].fill(bgra);
-        }
-    }
-
     pub fn draw_block(
         &self,
-        map: &mut Map<'_>,
+        map: &mut dyn Map,
         region: Region,
         config: &BlockConfig,
         background: Color,
@@ -154,15 +115,14 @@ impl Renderer {
         }
         if inner.w > 0 && inner.h > 0 {
             // TODO: Skip if the bar background has the same color.
-            self.fill_rect(map, inner, background);
+            map.fill(inner, background);
         }
         inner
     }
 
-    fn draw_borders(&self, map: &mut Map<'_>, region: Region, borders: [i32; 4], color: Color) {
+    fn draw_borders(&self, map: &mut dyn Map, region: Region, borders: [i32; 4], color: Color) {
         if borders[0] > 0 {
-            self.fill_rect(
-                map,
+            map.fill(
                 Region {
                     x: region.x,
                     y: region.y,
@@ -173,8 +133,7 @@ impl Renderer {
             );
         }
         if borders[1] > 0 {
-            self.fill_rect(
-                map,
+            map.fill(
                 Region {
                     x: region.x + region.w as i32 - borders[1],
                     y: region.y,
@@ -185,8 +144,7 @@ impl Renderer {
             );
         }
         if borders[2] > 0 {
-            self.fill_rect(
-                map,
+            map.fill(
                 Region {
                     x: region.x,
                     y: region.y + region.h as i32 - borders[2],
@@ -197,8 +155,7 @@ impl Renderer {
             );
         }
         if borders[3] > 0 {
-            self.fill_rect(
-                map,
+            map.fill(
                 Region {
                     x: region.x,
                     y: region.y,
@@ -212,7 +169,7 @@ impl Renderer {
 
     pub fn render_text(
         &mut self,
-        map: &mut Map<'_>,
+        map: &mut dyn Map,
         region: Region,
         text: &str,
         ft_color: Color,
@@ -235,27 +192,15 @@ impl Renderer {
             .sum::<i32>();
 
         let baseline = region.y + (region.h as i32 + ascent - 1) / 2;
-        let stride = map.width as usize;
-
         let mut x_start = region.x + (region.w as i32 - advance + 1) / 2;
-        let x_end = region.x + region.w as i32;
-
-        let (dst, _) = map.data.as_chunks_mut::<4>();
         for &c in &chars {
             let bitmap = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
-            let offset_y = baseline - bitmap.ymin - bitmap.height as i32;
-            let offset_x = x_start + bitmap.xmin;
-
-            let (src, _) = bitmap.pixels.as_chunks::<4>();
-            for row in 0..bitmap.height {
-                for col in 0..bitmap.width {
-                    let px_y = offset_y + row as i32;
-                    let px_x = offset_x + col as i32;
-                    if (0..map.height as i32).contains(&px_y) && (region.x..x_end).contains(&px_x) {
-                        dst[px_y as usize * stride + px_x as usize] = src[row * bitmap.width + col];
-                    }
-                }
-            }
+            map.copy(
+                region,
+                bitmap,
+                baseline - bitmap.ymin - bitmap.height as i32,
+                x_start + bitmap.xmin,
+            );
             x_start += bitmap.advance_width as i32;
         }
     }
@@ -307,65 +252,19 @@ impl Renderer {
             buffer.copy_to_back(prev, stride as usize);
         }
 
-        let bg_color = self.bg_color;
         let start = buffer.back * frame_size;
-        let mut map = Map::new(&mut buffer.mmap[start..start + frame_size], physical_height);
-        map.clear(dirty, bg_color);
-
-        let font_size = output.layout.font_size;
-        let ws_height = output.workspace_group.height();
-        if dirty.overlaps(Range::new(0, ws_height)) {
-            debug!("Output {}: rendering workspaces", output_id);
-            output.workspace_group.render(
-                self,
-                &mut map,
-                Region {
-                    x: 0,
-                    y: 0,
-                    w: physical_width,
-                    h: ws_height.max(0) as u32,
-                },
-                font_size,
-                dirty,
-            );
-        }
-
-        let mut y = physical_height as i32;
-        for i in 0..blocks.order.len() {
-            let layout = &output.layout.blocks[i];
-            y -= layout.height;
-
-            let range = Range::new(y, y + layout.height);
-            if dirty.overlaps(range) {
-                debug!("Output {}: rendering block {}", output_id, range);
-                let block = blocks.resolve_mut(blocks.order[i]);
-                let colors = block.colors();
-                let inner = self.draw_block(
-                    &mut map,
-                    Region {
-                        x: 0,
-                        y,
-                        w: physical_width,
-                        h: layout.height.max(0) as u32,
-                    },
-                    &layout.config,
-                    colors.background,
-                    colors.border,
-                );
-                block.render(
-                    self,
-                    &mut map,
-                    Region {
-                        x: inner.x,
-                        y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,
-                        w: inner.w,
-                        h: layout.content.max(0) as u32,
-                    },
-                    scale,
-                );
-            }
-            y -= output.layout.separator as i32;
-        }
+        let mut map = Mem::new(&mut buffer.mmap[start..start + frame_size], physical_height);
+        self.render_dirty(
+            &mut map,
+            output_id,
+            physical_width,
+            physical_height,
+            scale,
+            dirty,
+            &output.layout,
+            &mut output.workspace_group,
+            blocks,
+        );
 
         buffer.damage[buffer.back] = dirty;
         buffer.released[buffer.back] = false;
@@ -382,6 +281,77 @@ impl Renderer {
         output.surface.commit();
         output.dirty = None;
         debug!("Output {}: rendering done", output_id);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_dirty(
+        &mut self,
+        map: &mut dyn Map,
+        output_id: &ObjectId,
+        physical_width: u32,
+        physical_height: u32,
+        scale: i32,
+        dirty: Range,
+        output_layout: &Layout,
+        workspaces: &mut Workspaces,
+        blocks: &mut Blocks,
+    ) {
+        map.clear(dirty, self.bg_color);
+
+        let font_size = output_layout.font_size;
+        let ws_height = workspaces.height();
+        if dirty.overlaps(Range::new(0, ws_height)) {
+            debug!("Output {}: rendering workspaces", output_id);
+            workspaces.render(
+                self,
+                map,
+                Region {
+                    x: 0,
+                    y: 0,
+                    w: physical_width,
+                    h: ws_height.max(0) as u32,
+                },
+                font_size,
+                dirty,
+            );
+        }
+
+        let mut y = physical_height as i32;
+        for i in 0..blocks.order.len() {
+            let layout = &output_layout.blocks[i];
+            y -= layout.height;
+
+            let range = Range::new(y, y + layout.height);
+            if dirty.overlaps(range) {
+                debug!("Output {}: rendering block {}", output_id, range);
+                let block = blocks.resolve_mut(blocks.order[i]);
+                let colors = block.colors();
+                let inner = self.draw_block(
+                    map,
+                    Region {
+                        x: 0,
+                        y,
+                        w: physical_width,
+                        h: layout.height.max(0) as u32,
+                    },
+                    &layout.config,
+                    colors.background,
+                    colors.border,
+                );
+                block.render(
+                    self,
+                    map,
+                    Region {
+                        x: inner.x,
+                        y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,
+                        w: inner.w,
+                        h: layout.content.max(0) as u32,
+                    },
+                    scale,
+                );
+            }
+            y -= output_layout.separator as i32;
+        }
     }
 }
 
@@ -437,7 +407,7 @@ mod tests {
             w: SIZE,
             h: SIZE,
         };
-        r.render_text(&mut Map::new(&mut buf, SIZE), region, s, FG, BG, ft_size);
+        r.render_text(&mut Mem::new(&mut buf, SIZE), region, s, FG, BG, ft_size);
 
         let (xmin, xmax, ymin, ymax) =
             glyph_bounds(&buf).unwrap_or_else(|| panic!("'{s}' rendered no pixels"));
@@ -498,7 +468,7 @@ mod tests {
     fn draw_block_applies_margins_and_borders() {
         let r = make_renderer();
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
-        let mut map = Map::new(&mut buf, SIZE);
+        let mut map = Mem::new(&mut buf, SIZE);
         let outer = Region {
             x: 0,
             y: 0,
@@ -521,7 +491,7 @@ mod tests {
     fn draw_block_zero_sized_outer_is_noop() {
         let r = make_renderer();
         let mut buf = vec![0u8; 4];
-        let mut map = Map::new(&mut buf, 1);
+        let mut map = Mem::new(&mut buf, 1);
         let outer = Region {
             x: 0,
             y: 0,

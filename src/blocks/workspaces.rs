@@ -1,4 +1,5 @@
 use crate::config::WorkspaceConfig;
+use crate::map::Map;
 use crate::render::{self, Range, Renderer};
 use crate::state::Workspace;
 use crate::warning;
@@ -57,7 +58,7 @@ impl Workspaces {
     pub fn render(
         &mut self,
         renderer: &mut Renderer,
-        map: &mut render::Map<'_>,
+        map: &mut dyn Map,
         region: render::Region,
         font_size: u32,
         dirty: Range,

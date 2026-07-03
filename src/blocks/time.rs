@@ -3,6 +3,7 @@ use std::time::Duration;
 use super::{Block, Instance};
 use crate::blocks::FormatItem;
 use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
+use crate::map::Map;
 use crate::raster::Rasterizer;
 use crate::render;
 use crate::render::Renderer;
@@ -131,7 +132,7 @@ impl Block for Time {
     fn render(
         &mut self,
         renderer: &mut Renderer,
-        map: &mut render::Map<'_>,
+        map: &mut dyn Map,
         region: render::Region,
         scale: i32,
     ) {

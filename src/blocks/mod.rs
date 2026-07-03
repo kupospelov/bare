@@ -9,6 +9,7 @@ use crate::{
     config::{
         BatteryConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig, WirelessConfig,
     },
+    map::Map,
     raster::Rasterizer,
     render,
     render::Renderer,
@@ -168,11 +169,11 @@ pub trait Block {
     /// The block colors.
     fn colors(&self) -> &ColorConfig;
 
-    /// Render into the region of `mapping`.
+    /// Render into the map.
     fn render(
         &mut self,
         renderer: &mut Renderer,
-        map: &mut render::Map<'_>,
+        map: &mut dyn Map,
         region: render::Region,
         scale: i32,
     );
