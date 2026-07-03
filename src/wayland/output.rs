@@ -59,17 +59,7 @@ impl Output {
         rasterizer: &crate::raster::Rasterizer,
         separator: u32,
     ) {
-        let font_size = rasterizer.get_default_font_size(self.scale);
-        let separator = separator * self.scale as u32;
-        self.layout = Layout {
-            font_size,
-            separator,
-            blocks: blocks
-                .order
-                .iter()
-                .map(|r| blocks.resolve(*r).layout(rasterizer, self.scale))
-                .collect(),
-        };
+        self.layout = blocks.layout(rasterizer, self.scale, separator);
     }
 
     pub fn physical_height(&self) -> i32 {

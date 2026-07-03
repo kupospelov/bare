@@ -12,7 +12,7 @@ use crate::{
     map::Map,
     raster::Rasterizer,
     render,
-    render::Renderer,
+    render::{Layout, Renderer},
 };
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
@@ -130,6 +130,7 @@ impl Blocks {
                 ),
             }
         }
+
         blocks
     }
 
@@ -150,6 +151,20 @@ impl Blocks {
             Instance::Volume(j) => &mut self.volume.instances[j],
             Instance::Wireless(j) => &mut self.wireless.instances[j],
             Instance::Cpu(j) => &mut self.cpu.instances[j],
+        }
+    }
+
+    pub fn layout(&self, rasterizer: &Rasterizer, scale: i32, separator: u32) -> Layout {
+        let font_size = rasterizer.get_default_font_size(scale);
+        let separator = separator * scale as u32;
+        Layout {
+            font_size,
+            separator,
+            blocks: self
+                .order
+                .iter()
+                .map(|r| self.resolve(*r).layout(rasterizer, scale))
+                .collect(),
         }
     }
 }

@@ -1,7 +1,8 @@
 use crate::blocks::Blocks;
 use crate::blocks::workspaces::Workspaces;
 use crate::color::Color;
-use crate::config::BlockConfig;
+use crate::config::{BlockConfig, Config};
+use crate::font;
 use crate::map::Map;
 use crate::map::Mem;
 use crate::raster::Rasterizer;
@@ -13,7 +14,7 @@ use wayland_client::QueueHandle;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Region {
     pub x: i32,
     pub y: i32,
@@ -21,7 +22,7 @@ pub struct Region {
     pub h: u32,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Range {
     pub start: i32,
     pub end: i32,
@@ -82,11 +83,13 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(rasterizer: Rasterizer, font_size: u32, bg_color: Color) -> Self {
+    pub fn new(config: &Config) -> Self {
+        let fonts = font::load(&config.bar.fonts);
+        let size = fonts[0].size;
         Self {
-            rasterizer,
-            font_size,
-            bg_color,
+            rasterizer: Rasterizer::new(fonts),
+            font_size: size,
+            bg_color: config.bar.color.background,
         }
     }
 
@@ -284,10 +287,10 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn render_dirty(
+    fn render_dirty<T: std::fmt::Display>(
         &mut self,
         map: &mut dyn Map,
-        output_id: &ObjectId,
+        output_id: T,
         physical_width: u32,
         physical_height: u32,
         scale: i32,
@@ -358,19 +361,46 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::font;
-    use crate::raster::Rasterizer;
+    use crate::raster::Bitmap;
+    use pretty_assertions::assert_eq;
 
     const SIZE: u32 = 28;
     const FT_SIZE: u32 = 13;
     const FG: Color = Color::rgb(255, 255, 255);
     const BG: Color = Color::rgb(0, 0, 0);
 
+    #[derive(Debug, Clone, PartialEq)]
+    enum Call {
+        Fill { region: Region, color: Color },
+        Copy { region: Region },
+        Clear { range: Range, color: Color },
+    }
+
+    impl Map for Vec<Call> {
+        fn fill(&mut self, region: Region, color: Color) {
+            self.push(Call::Fill { region, color });
+        }
+
+        fn copy(&mut self, region: Region, _bitmap: &Bitmap, _y: i32, _x: i32) {
+            self.push(Call::Copy { region });
+        }
+
+        fn clear(&mut self, range: Range, color: Color) {
+            self.push(Call::Clear { range, color });
+        }
+    }
+
     fn make_renderer() -> Renderer {
         crate::log::set(crate::log::Level::Error);
 
-        let fonts = font::load("Sans Bold");
-        Renderer::new(Rasterizer::new(fonts), 10, BG)
+        let config: Config = toml::from_str(
+            r###"
+            [bar]
+            fonts = "Sans Bold 10px"
+            "###,
+        )
+        .unwrap();
+        Renderer::new(&config)
     }
 
     fn glyph_bounds(buf: &[u8]) -> Option<(i32, i32, i32, i32)> {
@@ -502,5 +532,155 @@ mod tests {
         assert_eq!(inner.w, 0);
         assert_eq!(inner.h, 0);
         assert_eq!(buf, vec![0u8; 4]);
+    }
+
+    #[test]
+    fn render_dirty_blocks() {
+        const BAR_WIDTH: u32 = 28;
+        const BAR_HEIGHT: u32 = 1080;
+        const SCALE: i32 = 1;
+        const SEPARATOR: u32 = 15;
+
+        let config: Config = toml::from_str(
+            r###"
+            [bar]
+            fonts = "Sans 10px"
+            blocks = [ "time.0", "time.1" ]
+
+            [time.1]
+            format = [ "CD" ]
+
+            [time.0]
+            format = [ "AB" ]
+            "###,
+        )
+        .unwrap();
+
+        let mut renderer = Renderer::new(&config);
+        let mut workspaces = Workspaces::new(&config.workspace, renderer.font_size);
+        let mut blocks = Blocks::new(&config);
+        let layout = blocks.layout(&renderer.rasterizer, SCALE, SEPARATOR);
+        let font_height = renderer.rasterizer.get_default_font_size(SCALE) as i32;
+
+        // The first block is dirty.
+        let mut calls: Vec<Call> = Vec::new();
+        renderer.render_dirty(
+            &mut calls,
+            "Output1",
+            BAR_WIDTH,
+            BAR_HEIGHT,
+            SCALE,
+            Range::new(BAR_HEIGHT as i32 - font_height, BAR_HEIGHT as i32),
+            &layout,
+            &mut workspaces,
+            &mut blocks,
+        );
+        let clear = vec![Call::Clear {
+            range: Range {
+                start: BAR_HEIGHT as i32 - font_height,
+                end: BAR_HEIGHT as i32,
+            },
+            color: BG,
+        }];
+        let render_time0 = vec![
+            Call::Fill {
+                region: Region {
+                    x: 0,
+                    y: BAR_HEIGHT as i32 - font_height,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+                color: BG,
+            },
+            Call::Copy {
+                region: Region {
+                    x: 0,
+                    y: BAR_HEIGHT as i32 - font_height,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+            },
+            Call::Copy {
+                region: Region {
+                    x: 0,
+                    y: BAR_HEIGHT as i32 - font_height,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+            },
+        ];
+        assert_eq!(calls, [clear, render_time0.clone()].concat());
+
+        // The second block is dirty.
+        let mut calls: Vec<Call> = Vec::new();
+        let start = (BAR_HEIGHT - SEPARATOR) as i32 - 2 * font_height;
+        renderer.render_dirty(
+            &mut calls,
+            "Output1",
+            BAR_WIDTH,
+            BAR_HEIGHT,
+            SCALE,
+            Range::new(start, start + font_height),
+            &layout,
+            &mut workspaces,
+            &mut blocks,
+        );
+        let clear = vec![Call::Clear {
+            range: Range {
+                start,
+                end: start + font_height,
+            },
+            color: BG,
+        }];
+        let render_time1 = vec![
+            Call::Fill {
+                region: Region {
+                    x: 0,
+                    y: start,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+                color: BG,
+            },
+            Call::Copy {
+                region: Region {
+                    x: 0,
+                    y: start,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+            },
+            Call::Copy {
+                region: Region {
+                    x: 0,
+                    y: start,
+                    w: BAR_WIDTH,
+                    h: font_height as u32,
+                },
+            },
+        ];
+        assert_eq!(calls, [clear, render_time1.clone()].concat());
+
+        // The whole bar is dirty.
+        let mut calls: Vec<Call> = Vec::new();
+        renderer.render_dirty(
+            &mut calls,
+            "Output1",
+            BAR_WIDTH,
+            BAR_HEIGHT,
+            SCALE,
+            Range::new(0, BAR_HEIGHT as i32),
+            &layout,
+            &mut workspaces,
+            &mut blocks,
+        );
+        let clear = vec![Call::Clear {
+            range: Range {
+                start: 0,
+                end: BAR_HEIGHT as i32,
+            },
+            color: BG,
+        }];
+        assert_eq!(calls, [clear, render_time0, render_time1].concat());
     }
 }

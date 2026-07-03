@@ -1,8 +1,6 @@
 use crate::blocks::Blocks;
 use crate::config::Config;
-use crate::font;
 use crate::init::Init;
-use crate::raster;
 use crate::render::Renderer;
 use crate::wayland::output::Output;
 use crate::wayland::pointer::Pointer;
@@ -64,14 +62,8 @@ pub struct State {
 
 impl State {
     pub fn new(config: Config, qh: QueueHandle<State>, init: Init) -> Self {
-        let fonts = font::load(&config.bar.fonts);
-        let size = fonts[0].size;
+        let renderer = Renderer::new(&config);
         let blocks = Blocks::new(&config);
-        let renderer = Renderer::new(
-            raster::Rasterizer::new(fonts),
-            size,
-            config.bar.color.background,
-        );
         Self {
             config,
             qh,
