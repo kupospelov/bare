@@ -7,12 +7,12 @@ pub mod workspaces;
 
 use crate::{
     config::{
-        BatteryConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig, WirelessConfig,
+        BatteryConfig, BlockConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig,
+        WirelessConfig,
     },
-    map::Map,
     raster::Rasterizer,
     render,
-    render::{Layout, Renderer},
+    render::Layout,
 };
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
@@ -28,23 +28,29 @@ pub trait FormatItem {
     }
 }
 
-pub fn content_height<T: FormatItem>(items: &[T], rasterizer: &Rasterizer, scale: i32) -> i32 {
-    let len = items.len();
+pub fn content_height<B: Block + ?Sized>(block: &B, rasterizer: &Rasterizer, scale: i32) -> i32 {
+    let len = block.len();
     if len < 1 {
         return 0;
     }
 
-    let mut height = items[len - 1].height(rasterizer, scale);
-    for item in items.iter().take(len - 1) {
-        let h = item.height(rasterizer, scale);
+    let mut height = block.get(len - 1, rasterizer, scale).height;
+    for i in 0..len - 1 {
+        let h = block.get(i, rasterizer, scale).height;
         height += h;
         height += inner_margin(h) as u32;
     }
+
     height as i32
 }
 
 pub fn inner_margin(font_size: u32) -> i32 {
     font_size as i32 / 3
+}
+
+pub struct Line {
+    pub height: u32,
+    pub text: String,
 }
 
 #[derive(Clone, Copy)]
@@ -144,16 +150,6 @@ impl Blocks {
         }
     }
 
-    pub fn resolve_mut(&mut self, r: Instance) -> &mut dyn Block {
-        match r {
-            Instance::Time(j) => &mut self.time.instances[j],
-            Instance::Battery(j) => &mut self.battery.instances[j],
-            Instance::Volume(j) => &mut self.volume.instances[j],
-            Instance::Wireless(j) => &mut self.wireless.instances[j],
-            Instance::Cpu(j) => &mut self.cpu.instances[j],
-        }
-    }
-
     pub fn layout(&self, rasterizer: &Rasterizer, scale: i32, separator: u32) -> Layout {
         let font_size = rasterizer.get_default_font_size(scale);
         let separator = separator * scale as u32;
@@ -179,19 +175,27 @@ impl AsFd for Fd {
 
 pub trait Block {
     /// The block layout.
-    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout;
+    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
+        let content = content_height(self, rasterizer, scale);
+        let block = self.block().scaled(scale);
+        render::BlockLayout {
+            content,
+            height: block.height(content),
+            config: block,
+        }
+    }
+
+    /// The block config.
+    fn block(&self) -> &BlockConfig;
 
     /// The block colors.
     fn colors(&self) -> &ColorConfig;
 
-    /// Render into the map.
-    fn render(
-        &mut self,
-        renderer: &mut Renderer,
-        map: &mut dyn Map,
-        region: render::Region,
-        scale: i32,
-    );
+    /// The number of lines to render.
+    fn len(&self) -> usize;
+
+    /// The line to render.
+    fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line;
 }
 
 #[cfg(test)]

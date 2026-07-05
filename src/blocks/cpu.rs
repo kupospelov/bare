@@ -1,12 +1,9 @@
 use std::fs;
 
-use super::{Block, Instance};
+use super::{Block, Instance, Line};
 use crate::blocks::FormatItem;
-use crate::config::{ColorConfig, CpuConfig, CpuFormatItem};
-use crate::map::Map;
+use crate::config::{BlockConfig, ColorConfig, CpuConfig, CpuFormatItem};
 use crate::raster::Rasterizer;
-use crate::render;
-use crate::render::Renderer;
 use crate::{debug, error};
 
 struct Event {
@@ -104,24 +101,11 @@ impl Cpu {
             false
         }
     }
-
-    fn item_text(&self, item: &CpuFormatItem) -> String {
-        match item {
-            CpuFormatItem::Usage => format!("{:02}", self.usage),
-            CpuFormatItem::Label(s) => s.clone(),
-        }
-    }
 }
 
 impl Block for Cpu {
-    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
-        let content = super::content_height(&self.config.format, rasterizer, scale);
-        let block = self.config.block.scaled(scale);
-        render::BlockLayout {
-            content,
-            height: block.height(content),
-            config: block,
-        }
+    fn block(&self) -> &BlockConfig {
+        &self.config.block
     }
 
     fn colors(&self) -> &ColorConfig {
@@ -132,32 +116,18 @@ impl Block for Cpu {
         }
     }
 
-    fn render(
-        &mut self,
-        renderer: &mut Renderer,
-        map: &mut dyn Map,
-        region: render::Region,
-        scale: i32,
-    ) {
-        let color = self.colors();
-        let mut y = region.y;
-        for item in &self.config.format {
-            let h = item.height(&renderer.rasterizer, scale);
-            let text = self.item_text(item);
-            renderer.render_text(
-                map,
-                render::Region {
-                    x: region.x,
-                    y,
-                    w: region.w,
-                    h,
-                },
-                &text,
-                color.text,
-                color.background,
-                h,
-            );
-            y += h as i32 + super::inner_margin(h);
+    fn len(&self) -> usize {
+        self.config.format.len()
+    }
+
+    fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
+        let item = &self.config.format[index];
+        Line {
+            height: item.height(rasterizer, scale),
+            text: match item {
+                CpuFormatItem::Usage => format!("{:02}", self.usage),
+                CpuFormatItem::Label(s) => s.clone(),
+            },
         }
     }
 }

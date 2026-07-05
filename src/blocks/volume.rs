@@ -1,10 +1,7 @@
-use super::{Block, Fd, Instance};
+use super::{Block, Fd, Instance, Line};
 use crate::blocks::FormatItem;
-use crate::config::{ColorConfig, VolumeConfig, VolumeFormatItem};
-use crate::map::Map;
+use crate::config::{BlockConfig, ColorConfig, VolumeConfig, VolumeFormatItem};
 use crate::raster::Rasterizer;
-use crate::render;
-use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, warning};
 use pipewire_native::{
@@ -268,27 +265,11 @@ impl Volume {
         self.sink = current.clone();
         true
     }
-
-    fn item_text(&self, item: &VolumeFormatItem) -> String {
-        match item {
-            VolumeFormatItem::Volume => match self.sink.percent {
-                Some(p) => format!("{}", p),
-                None => "...".into(),
-            },
-            VolumeFormatItem::Label(s) => s.clone(),
-        }
-    }
 }
 
 impl Block for Volume {
-    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
-        let content = super::content_height(&self.config.format, rasterizer, scale);
-        let block = self.config.block.scaled(scale);
-        render::BlockLayout {
-            content,
-            height: block.height(content),
-            config: block,
-        }
+    fn block(&self) -> &BlockConfig {
+        &self.config.block
     }
 
     fn colors(&self) -> &ColorConfig {
@@ -299,36 +280,21 @@ impl Block for Volume {
         }
     }
 
-    fn render(
-        &mut self,
-        renderer: &mut Renderer,
-        map: &mut dyn Map,
-        region: render::Region,
-        scale: i32,
-    ) {
-        let color = if self.sink.mute {
-            &self.config.muted.color
-        } else {
-            &self.config.color
-        };
-        let mut y = region.y;
-        for item in &self.config.format {
-            let h = item.height(&renderer.rasterizer, scale);
-            let text = self.item_text(item);
-            renderer.render_text(
-                map,
-                render::Region {
-                    x: region.x,
-                    y,
-                    w: region.w,
-                    h,
+    fn len(&self) -> usize {
+        self.config.format.len()
+    }
+
+    fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
+        let item = &self.config.format[index];
+        Line {
+            height: item.height(rasterizer, scale),
+            text: match item {
+                VolumeFormatItem::Volume => match self.sink.percent {
+                    Some(p) => format!("{}", p),
+                    None => "...".into(),
                 },
-                &text,
-                color.text,
-                color.background,
-                h,
-            );
-            y += h as i32 + super::inner_margin(h);
+                VolumeFormatItem::Label(s) => s.clone(),
+            },
         }
     }
 }

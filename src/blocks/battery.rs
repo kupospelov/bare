@@ -1,10 +1,7 @@
-use super::{Block, Instance};
+use super::{Block, Instance, Line};
 use crate::blocks::FormatItem;
-use crate::config::{BatteryConfig, BatteryFormatItem, ColorConfig};
-use crate::map::Map;
+use crate::config::{BatteryConfig, BatteryFormatItem, BlockConfig, ColorConfig};
 use crate::raster::Rasterizer;
-use crate::render;
-use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, fail};
 use nix::sys::socket::{
@@ -178,24 +175,6 @@ impl Battery {
         true
     }
 
-    fn state_color(&self) -> &ColorConfig {
-        match self.state {
-            BatteryState::Discharging => &self.config.color,
-            BatteryState::Charging => &self.config.charging.color,
-            BatteryState::Full => &self.config.full.color,
-            BatteryState::Idle => &self.config.idle.color,
-            BatteryState::Unknown => &self.config.unknown.color,
-            BatteryState::Low => &self.config.low.state.color,
-        }
-    }
-
-    fn item_text(&self, item: &BatteryFormatItem) -> String {
-        match item {
-            BatteryFormatItem::Capacity => format!("{:02}", self.capacity),
-            BatteryFormatItem::Label(s) => s.clone(),
-        }
-    }
-
     fn read_event_from_path(&mut self, read_name: bool) -> Option<Event> {
         match std::fs::read(&self.config.path) {
             Ok(bytes) => Some(parse_event(bytes.split(|&b| b == b'\n'), read_name)),
@@ -271,46 +250,33 @@ fn open_uevent_socket() -> nix::Result<OwnedFd> {
 }
 
 impl Block for Battery {
-    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
-        let content = super::content_height(&self.config.format, rasterizer, scale);
-        let block = self.config.block.scaled(scale);
-        render::BlockLayout {
-            content,
-            height: block.height(content),
-            config: block,
-        }
+    fn block(&self) -> &BlockConfig {
+        &self.config.block
     }
 
     fn colors(&self) -> &ColorConfig {
-        self.state_color()
+        match self.state {
+            BatteryState::Discharging => &self.config.color,
+            BatteryState::Charging => &self.config.charging.color,
+            BatteryState::Full => &self.config.full.color,
+            BatteryState::Idle => &self.config.idle.color,
+            BatteryState::Unknown => &self.config.unknown.color,
+            BatteryState::Low => &self.config.low.state.color,
+        }
     }
 
-    fn render(
-        &mut self,
-        renderer: &mut Renderer,
-        map: &mut dyn Map,
-        region: render::Region,
-        scale: i32,
-    ) {
-        let color = self.state_color();
-        let mut y = region.y;
-        for item in &self.config.format {
-            let h = item.height(&renderer.rasterizer, scale);
-            let text = self.item_text(item);
-            renderer.render_text(
-                map,
-                render::Region {
-                    x: region.x,
-                    y,
-                    w: region.w,
-                    h,
-                },
-                &text,
-                color.text,
-                color.background,
-                h,
-            );
-            y += h as i32 + super::inner_margin(h);
+    fn len(&self) -> usize {
+        self.config.format.len()
+    }
+
+    fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
+        let item = &self.config.format[index];
+        Line {
+            height: item.height(rasterizer, scale),
+            text: match item {
+                BatteryFormatItem::Capacity => format!("{:02}", self.capacity),
+                BatteryFormatItem::Label(s) => s.clone(),
+            },
         }
     }
 }

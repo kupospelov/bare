@@ -1,5 +1,5 @@
-use crate::blocks::Blocks;
 use crate::blocks::workspaces::Workspaces;
+use crate::blocks::{Block, Blocks};
 use crate::color::Color;
 use crate::config::{BlockConfig, Config};
 use crate::font;
@@ -208,6 +208,34 @@ impl Renderer {
         }
     }
 
+    pub fn render_block(
+        &mut self,
+        map: &mut dyn Map,
+        block: &dyn Block,
+        region: Region,
+        scale: i32,
+    ) {
+        let color = block.colors();
+        let mut y = region.y;
+        for i in 0..block.len() {
+            let item = block.get(i, &self.rasterizer, scale);
+            self.render_text(
+                map,
+                Region {
+                    x: region.x,
+                    y,
+                    w: region.w,
+                    h: item.height,
+                },
+                &item.text,
+                color.text,
+                color.background,
+                item.height,
+            );
+            y += item.height as i32 + crate::blocks::inner_margin(item.height);
+        }
+    }
+
     pub fn render(
         &mut self,
         output_id: &ObjectId,
@@ -327,7 +355,7 @@ impl Renderer {
             let range = Range::new(y, y + layout.height);
             if dirty.overlaps(range) {
                 debug!("Output {}: rendering block {}", output_id, range);
-                let block = blocks.resolve_mut(blocks.order[i]);
+                let block = blocks.resolve(blocks.order[i]);
                 let colors = block.colors();
                 let inner = self.draw_block(
                     map,
@@ -341,9 +369,9 @@ impl Renderer {
                     colors.background,
                     colors.border,
                 );
-                block.render(
-                    self,
+                self.render_block(
                     map,
+                    block,
                     Region {
                         x: inner.x,
                         y: inner.y + (inner.h as i32 - layout.content).max(0) / 2,

@@ -1,12 +1,9 @@
 use std::time::Duration;
 
-use super::{Block, Instance};
+use super::{Block, Instance, Line};
 use crate::blocks::FormatItem;
-use crate::config::{ColorConfig, TimeConfig, TimeFormatItem};
-use crate::map::Map;
+use crate::config::{BlockConfig, ColorConfig, TimeConfig, TimeFormatItem};
 use crate::raster::Rasterizer;
-use crate::render;
-use crate::render::Renderer;
 use crate::state::State;
 use crate::{debug, error, fail};
 use calloop::timer::{TimeoutAction, Timer};
@@ -83,16 +80,6 @@ pub struct Time {
 }
 
 impl Time {
-    fn item_text(&self, item: &TimeFormatItem) -> String {
-        match item {
-            TimeFormatItem::Hour => format!("{:02}", self.now.hour()),
-            TimeFormatItem::Minute => format!("{:02}", self.now.minute()),
-            TimeFormatItem::Day => format!("{:02}", self.now.month_day()),
-            TimeFormatItem::Month => format!("{:02}", self.now.month()),
-            TimeFormatItem::Label(s) => s.clone(),
-        }
-    }
-
     fn update(&mut self, utc: UtcDateTime) -> bool {
         let now = match utc.project(self.config.timezone.as_ref()) {
             Ok(t) => t,
@@ -115,46 +102,29 @@ impl Time {
 }
 
 impl Block for Time {
-    fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
-        let content = super::content_height(&self.config.format, rasterizer, scale);
-        let block = self.config.block.scaled(scale);
-        render::BlockLayout {
-            content,
-            height: block.height(content),
-            config: block,
-        }
+    fn block(&self) -> &BlockConfig {
+        &self.config.block
     }
 
     fn colors(&self) -> &ColorConfig {
         &self.config.color
     }
 
-    fn render(
-        &mut self,
-        renderer: &mut Renderer,
-        map: &mut dyn Map,
-        region: render::Region,
-        scale: i32,
-    ) {
-        let color = &self.config.color;
-        let mut y = region.y;
-        for item in &self.config.format {
-            let h = item.height(&renderer.rasterizer, scale);
-            let text = self.item_text(item);
-            renderer.render_text(
-                map,
-                render::Region {
-                    x: region.x,
-                    y,
-                    w: region.w,
-                    h,
-                },
-                &text,
-                color.text,
-                color.background,
-                h,
-            );
-            y += h as i32 + super::inner_margin(h);
+    fn len(&self) -> usize {
+        self.config.format.len()
+    }
+
+    fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
+        let item = &self.config.format[index];
+        Line {
+            height: item.height(rasterizer, scale),
+            text: match item {
+                TimeFormatItem::Hour => format!("{:02}", self.now.hour()),
+                TimeFormatItem::Minute => format!("{:02}", self.now.minute()),
+                TimeFormatItem::Day => format!("{:02}", self.now.month_day()),
+                TimeFormatItem::Month => format!("{:02}", self.now.month()),
+                TimeFormatItem::Label(s) => s.clone(),
+            },
         }
     }
 }
