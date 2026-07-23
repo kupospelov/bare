@@ -26,6 +26,10 @@ the layer-shell and ext-workspace-v1 protocols.
 
 The bar is configured via a configuration file as described in *bare*(5).
 
+# SIGNALS
+
+SIGUSR1 triggers an immediate bar update.
+
 # AUTHORS
 
 Konstantin Pospelov <kupospelov@gmail.com>

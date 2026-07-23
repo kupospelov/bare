@@ -11,7 +11,7 @@ memmap2 = "0.9"
 fontdue = "0.9.3"
 fontconfig = "0.10"
 nix = { version = "0.31.2", features = ["fs", "net"] }
-calloop = "0.14"
+calloop = { version = "0.14", features = ["signals"] }
 calloop-wayland-source = "0.4"
 tz-rs = "0.7.3"
 serde = { version = "1", features = ["derive"] }

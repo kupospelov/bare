@@ -6,17 +6,20 @@ use crate::config::{BlockConfig, ColorConfig, TimeConfig, TimeFormatItem};
 use crate::raster::Rasterizer;
 use crate::state::State;
 use crate::{debug, error, fail};
+use calloop::RegistrationToken;
 use calloop::timer::{TimeoutAction, Timer};
 use tz::{DateTime, UtcDateTime};
 
 pub struct Group {
     pub instances: Vec<Time>,
+    token: Option<RegistrationToken>,
 }
 
 impl Group {
     pub fn new() -> Self {
         Self {
             instances: Vec::new(),
+            token: None,
         }
     }
 
@@ -36,12 +39,16 @@ impl Group {
         Instance::Time(n)
     }
 
-    pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
+    pub fn register_events(&mut self, handle: &calloop::LoopHandle<'_, State>) {
         if self.instances.is_empty() {
             return;
         }
 
-        handle
+        if let Some(token) = self.token {
+            handle.remove(token);
+        }
+
+        let token = handle
             .insert_source(Timer::immediate(), |instant, _, state| {
                 let utc = match UtcDateTime::now() {
                     Ok(t) => {
@@ -70,6 +77,8 @@ impl Group {
                 TimeoutAction::ToInstant(instant + Duration::from_secs(60 - utc.second() as u64))
             })
             .expect("Failed to insert time group timer");
+
+        self.token = Some(token);
     }
 }
 

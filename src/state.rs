@@ -5,6 +5,7 @@ use crate::render::Renderer;
 use crate::wayland::output::Output;
 use crate::wayland::pointer::Pointer;
 use crate::{debug, warning};
+use calloop::signals::{Signal, Signals};
 use calloop::timer::{TimeoutAction, Timer};
 use std::collections::HashMap;
 use wayland_client::{
@@ -184,17 +185,40 @@ impl State {
         // Interval-based updates.
         handle
             .insert_source(Timer::immediate(), move |_, _, state| {
-                let mut dirty = Vec::new();
-                state.blocks.cpu.update(&mut dirty);
-                state.blocks.wireless.update(&mut dirty);
-                state.blocks.battery.update(&mut dirty);
-                for id in dirty {
-                    state.mark_all_outputs_block_dirty(id);
-                }
-
+                state.update_interval_blocks();
                 TimeoutAction::ToDuration(state.config.bar.interval)
             })
             .expect("Failed to insert interval timer");
+
+        // Signal-based updates.
+        let signal_handle = handle.clone();
+        handle
+            .insert_source(
+                Signals::new(&[Signal::SIGUSR1]).expect("Failed to create signal source"),
+                move |event, _, state| {
+                    debug!("Received {:?}", event.signal());
+                    if event.signal() == Signal::SIGUSR1 {
+                        state.update_event_blocks(&signal_handle);
+                        state.update_interval_blocks();
+                    }
+                },
+            )
+            .expect("Failed to insert signal source");
+    }
+
+    fn update_event_blocks(&mut self, handle: &calloop::LoopHandle<'_, State>) {
+        self.blocks.time.register_events(handle);
+        self.blocks.volume.register_events(handle);
+    }
+
+    fn update_interval_blocks(&mut self) {
+        let mut dirty = Vec::new();
+        self.blocks.cpu.update(&mut dirty);
+        self.blocks.wireless.update(&mut dirty);
+        self.blocks.battery.update(&mut dirty);
+        for id in dirty {
+            self.mark_all_outputs_block_dirty(id);
+        }
     }
 }
 

@@ -4,6 +4,7 @@ use crate::config::{BlockConfig, ColorConfig, VolumeConfig, VolumeFormatItem};
 use crate::raster::Rasterizer;
 use crate::state::State;
 use crate::{debug, error, warning};
+use calloop::RegistrationToken;
 use pipewire_native::{
     self as pipewire,
     context::Context,
@@ -47,12 +48,14 @@ impl Sinks {
 
 pub struct Group {
     pub instances: Vec<Volume>,
+    token: Option<RegistrationToken>,
 }
 
 impl Group {
     pub fn new() -> Self {
         Self {
             instances: Vec::new(),
+            token: None,
         }
     }
 
@@ -62,9 +65,13 @@ impl Group {
         Instance::Volume(n)
     }
 
-    pub fn register_events(&self, handle: &calloop::LoopHandle<'_, State>) {
+    pub fn register_events(&mut self, handle: &calloop::LoopHandle<'_, State>) {
         if self.instances.is_empty() {
             return;
+        }
+
+        if let Some(token) = self.token {
+            handle.remove(token);
         }
 
         pipewire::init();
@@ -163,7 +170,7 @@ impl Group {
         });
 
         let fd = main_loop.get_fd();
-        handle
+        let token = handle
             .insert_source(
                 calloop::generic::Generic::new(
                     Fd(fd),
@@ -193,6 +200,8 @@ impl Group {
                 },
             )
             .expect("Failed to insert volume group fd");
+
+        self.token = Some(token);
     }
 }
 
