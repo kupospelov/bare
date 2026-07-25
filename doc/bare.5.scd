@@ -6,8 +6,14 @@ bare - configuration file
 
 # DESCRIPTION
 
-The configuration file is located at *$XDG\_CONFIG\_HOME/bare/config.toml* or at
-*~/.config/bare/config.toml*.
+The configuration files are located at *$XDG\_CONFIG\_HOME/bare* or at
+*~/.config/bare*. The configuration can be placed in:
+
+- *config.toml* (loaded first if exists)
+- *conf.d/\*.toml* (loaded in the lexicographic order)
+
+In case the same field is set in multiple files, the file loaded last overrides
+the value.
 
 # BAR
 

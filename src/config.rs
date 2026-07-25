@@ -1,9 +1,9 @@
 use crate::blocks::FormatItem;
 use crate::color::Color;
-use crate::{debug, warning};
+use crate::{debug, error, fail, warning};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const GOOD: Color = Color::rgb(0x60, 0xb4, 0x8a);
@@ -457,17 +457,35 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load(path: PathBuf) -> Self {
-        let contents = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                debug!("Config file {} not found, using defaults", path.display());
-                return Self::default();
-            }
-            Err(e) => panic!("Failed to read {}: {}", path.display(), e),
+    pub fn load() -> Self {
+        Self::from_dir(&default_config_path())
+    }
+
+    pub fn from_file(path: PathBuf) -> Self {
+        let Some(toml) = load_toml(&path) else {
+            fail!("{} not found", path.display());
         };
-        toml::from_str(&contents)
-            .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e))
+
+        toml::Value::Table(toml)
+            .try_into()
+            .expect("Failed to parse configuration")
+    }
+
+    fn from_dir(path: &Path) -> Self {
+        let mut toml = load_toml(&path.join("config.toml")).unwrap_or_else(toml::Table::new);
+
+        for p in config_paths(&path.join("conf.d")) {
+            let Some(c) = load_toml(&p) else {
+                error!("{} not found", p.display());
+                continue;
+            };
+
+            merge_toml(&mut toml, c);
+        }
+
+        toml::Value::Table(toml)
+            .try_into()
+            .expect("Failed to parse configuration")
     }
 }
 
@@ -479,7 +497,71 @@ pub fn default_config_path() -> PathBuf {
             let home = std::env::var_os("HOME").expect("HOME not set");
             PathBuf::from(home).join(".config")
         });
-    base.join("bare").join("config.toml")
+    base.join("bare")
+}
+
+fn config_paths(path: &Path) -> Vec<PathBuf> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return Vec::new();
+            } else {
+                panic!("Failed to read {}: {}", path.display(), e);
+            }
+        }
+    };
+
+    let mut paths = entries
+        .filter_map(|entry| {
+            let e = entry.expect("Failed to read entry");
+            let t = e.file_type().expect("Failed to read entry type");
+
+            if !t.is_file() {
+                return None;
+            }
+
+            if let Some(ext) = e.path().extension()
+                && ext == "toml"
+            {
+                Some(e.path())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<PathBuf>>();
+    paths.sort();
+    paths
+}
+
+fn load_toml(path: &Path) -> Option<toml::Table> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return None;
+            } else {
+                panic!("Failed to load {}: {}", path.display(), e);
+            }
+        }
+    };
+
+    debug!("Load: {}", path.display());
+    toml::from_str(&contents)
+        .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e))
+}
+
+fn merge_toml(base: &mut toml::Table, update: toml::Table) {
+    for (key, value) in update {
+        match (base.get_mut(&key), value) {
+            (Some(toml::Value::Table(base)), toml::Value::Table(update)) => {
+                merge_toml(base, update);
+            }
+            (_, value) => {
+                base.insert(key, value);
+            }
+        }
+    }
 }
 
 mod shadow {
@@ -845,6 +927,8 @@ impl From<shadow::BarConfig> for BarConfig {
 
 #[cfg(test)]
 mod tests {
+    use crate::tests::tmp::Directory;
+
     use super::*;
 
     #[test]
@@ -1357,5 +1441,133 @@ mod tests {
                 ..bar_color
             }
         );
+    }
+
+    #[test]
+    fn multiple_configs_ignored_for_single_file() {
+        let tmp = Directory::new();
+        let path = tmp.path().join("loaded.toml");
+        tmp.write(
+            &path,
+            r###"
+            [bar]
+            width = 20
+            "###,
+        );
+        tmp.write(
+            "conf.d/ignored.toml",
+            r###"
+            [bar]
+            separator = 40
+            "###,
+        );
+
+        let config = Config::from_file(path);
+
+        assert_eq!(config.bar.width, 20);
+        assert_eq!(config.bar.separator, 14);
+    }
+
+    #[test]
+    fn multiple_configs_load_order() {
+        let tmp = Directory::new();
+        tmp.write(
+            "config.toml",
+            r###"
+            [bar]
+            width = 20
+            blocks = ["cpu.0"]
+
+            [bar.color]
+            text = "#111111"
+            background = "#222222"
+
+            [cpu.0]
+            format = ["CPU", "[usage]"]
+
+            [volume.0]
+            margins = [1, 2, 3, 4]
+            "###,
+        );
+        tmp.write(
+            "conf.d/10-first.toml",
+            r###"
+            [bar]
+            width = 30
+            blocks = ["volume.0"]
+
+            [bar.color]
+            border = "#333333"
+            "###,
+        );
+        tmp.write(
+            "conf.d/20-second.toml",
+            r###"
+            [bar]
+            width = 40
+
+            [bar.color]
+            background = "#444444"
+            "###,
+        );
+
+        let config = Config::from_dir(tmp.path());
+
+        assert_eq!(config.bar.width, 40);
+        assert_eq!(config.bar.blocks, ["volume.0"]);
+        assert_eq!(config.bar.color.text, Color::rgb(0x11, 0x11, 0x11));
+        assert_eq!(config.bar.color.background, Color::rgb(0x44, 0x44, 0x44));
+        assert_eq!(config.bar.color.border, Color::rgb(0x33, 0x33, 0x33));
+        assert_eq!(
+            config.cpu.get("0").unwrap().format,
+            [CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage]
+        );
+        assert_eq!(config.volume.get("0").unwrap().block.margins, [1, 2, 3, 4]);
+        assert_eq!(
+            config.volume.get("0").unwrap().color.background,
+            Color::rgb(0x44, 0x44, 0x44)
+        );
+    }
+
+    #[test]
+    fn multiple_configs_no_main_config() {
+        let tmp = Directory::new();
+        tmp.write(
+            "conf.d/bar.toml",
+            r###"
+            [bar]
+            interval = 55
+            "###,
+        );
+
+        let config = Config::from_dir(tmp.path());
+
+        assert_eq!(config.bar.interval, Duration::from_secs(55));
+        assert_eq!(config.bar.width, 28);
+    }
+
+    #[test]
+    fn multiple_configs_only_toml() {
+        let tmp = Directory::new();
+        tmp.write(
+            "config.toml",
+            r###"
+            [bar]
+            width = 20
+            "###,
+        );
+        tmp.write("conf.d/ignored.conf", "not toml");
+        tmp.write("conf.d/ignored.toml/nested", "not a file");
+        tmp.write(
+            "conf.d/loaded.toml",
+            r###"
+            [bar]
+            width = 30
+            "###,
+        );
+
+        let config = Config::from_dir(tmp.path());
+
+        assert_eq!(config.bar.width, 30);
     }
 }

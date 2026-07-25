@@ -9,6 +9,8 @@ mod map;
 mod raster;
 mod render;
 mod state;
+#[cfg(test)]
+mod tests;
 mod wayland;
 
 use std::path::PathBuf;
@@ -55,7 +57,10 @@ fn main() {
     };
 
     // Move globals to State and create outputs.
-    let config = Config::load(args.config.unwrap_or_else(config::default_config_path));
+    let config = args
+        .config
+        .map(Config::from_file)
+        .unwrap_or_else(Config::load);
     let mut state = State::new(config, qh.clone(), init);
     let _ = conn.display().get_registry(&qh, ());
     event_queue.roundtrip(&mut state).unwrap();
