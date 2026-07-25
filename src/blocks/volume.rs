@@ -24,7 +24,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 struct SinkState {
     percent: Option<u8>,
     mute: bool,
@@ -44,11 +44,22 @@ impl Sinks {
             .cloned()
             .unwrap_or_default()
     }
+
+    fn retain_default_sink(&mut self) {
+        if let Some(sink) = self.default_sink.as_ref() {
+            self.sinks.retain(|key, _| key == sink);
+        } else {
+            self.sinks.clear();
+        }
+    }
 }
 
 pub struct Group {
     pub instances: Vec<Volume>,
     token: Option<RegistrationToken>,
+
+    // The library requires captured variables to satisfy Send.
+    sinks: Arc<RwLock<Sinks>>,
 }
 
 impl Group {
@@ -56,6 +67,10 @@ impl Group {
         Self {
             instances: Vec::new(),
             token: None,
+            sinks: Arc::new(RwLock::new(Sinks {
+                default_sink: None,
+                sinks: HashMap::new(),
+            })),
         }
     }
 
@@ -72,17 +87,15 @@ impl Group {
 
         if let Some(token) = self.token {
             handle.remove(token);
-        }
 
-        pipewire::init();
-        debug!("PipeWire initialized");
+            // Keep the current default sink to avoid flicker.
+            self.sinks.write().unwrap().retain_default_sink();
+        } else {
+            pipewire::init();
+            debug!("PipeWire initialized");
+        };
 
-        // The library requires captured variables to satisfy Send.
-        let sinks = Arc::new(RwLock::new(Sinks {
-            default_sink: None,
-            sinks: HashMap::new(),
-        }));
-
+        let sinks = self.sinks.clone();
         let properties = Properties::new();
         let main_loop = MainLoop::new(&properties).unwrap();
         let context = Context::new(&main_loop, properties).expect("Failed to create context");
@@ -249,6 +262,8 @@ fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sin
         if let Some(m) = mute {
             sink.mute = m;
         }
+
+        debug!("PipeWire node {}: {:?}", node_name, sink);
     }
 }
 
