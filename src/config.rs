@@ -11,7 +11,7 @@ const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
 const BAD: Color = Color::rgb(0xdc, 0xa3, 0xa3);
 
 #[derive(Debug, Deserialize)]
-#[serde(from = "shadow::Config")]
+#[serde(from = "toml::Table")]
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
@@ -23,10 +23,11 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(from = "shadow::BarConfig")]
+#[serde(default, deny_unknown_fields)]
 pub struct BarConfig {
     pub fonts: String,
     pub width: u32,
+    #[serde(deserialize_with = "duration_from_secs")]
     pub interval: Duration,
     pub separator: u32,
     pub blocks: Vec<String>,
@@ -41,11 +42,7 @@ impl Default for BarConfig {
             interval: Duration::from_secs(10),
             separator: 14,
             blocks: vec!["cpu.0".into(), "volume.0".into(), "time.0".into()],
-            color: ColorConfig {
-                text: Color::rgb(0x64, 0x64, 0x64),
-                background: Color::rgb(0x0, 0x0, 0x0),
-                border: Color::rgb(0x0, 0x0, 0x0),
-            },
+            color: ColorConfig::default(),
         }
     }
 }
@@ -53,18 +50,12 @@ impl Default for BarConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceConfig {
     pub block: BlockConfig,
-    pub active: WorkspaceStateConfig,
-    pub inactive: WorkspaceStateConfig,
-    pub urgent: WorkspaceStateConfig,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorkspaceStateConfig {
-    pub color: ColorConfig,
+    pub active: StateConfig,
+    pub inactive: StateConfig,
+    pub urgent: StateConfig,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
-#[serde(default)]
 pub struct BlockConfig {
     pub margins: [i32; 4],
     pub borders: [i32; 4],
@@ -83,14 +74,30 @@ impl BlockConfig {
     pub fn height(&self, min: i32) -> i32 {
         self.height.max(min) + self.margins[0] + self.margins[2]
     }
+
+    fn visit(&mut self, toml: &mut Toml) {
+        toml.get("margins").set(&mut self.margins);
+        toml.get("borders").set(&mut self.borders);
+        toml.get("height").set(&mut self.height);
+    }
 }
 
-#[derive(Debug, Default, Deserialize, Clone, PartialEq)]
-#[serde(default)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(default, deny_unknown_fields)]
 pub struct ColorConfig {
     pub text: Color,
     pub background: Color,
     pub border: Color,
+}
+
+impl Default for ColorConfig {
+    fn default() -> Self {
+        Self {
+            text: Color::rgb(0x64, 0x64, 0x64),
+            background: Color::rgb(0, 0, 0),
+            border: Color::rgb(0, 0, 0),
+        }
+    }
 }
 
 impl WorkspaceConfig {
@@ -110,21 +117,21 @@ impl WorkspaceConfig {
                 borders: [1, 1, 1, 1],
                 margins: [0, 2, 2, 0],
             },
-            active: WorkspaceStateConfig {
+            active: StateConfig {
                 color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x28, 0x55, 0x77),
                     border: Color::rgb(0x4c, 0x78, 0x99),
                 },
             },
-            inactive: WorkspaceStateConfig {
+            inactive: StateConfig {
                 color: ColorConfig {
                     text: Color::rgb(0x88, 0x88, 0x88),
                     background: Color::rgb(0x22, 0x22, 0x22),
                     border: Color::rgb(0x33, 0x33, 0x33),
                 },
             },
-            urgent: WorkspaceStateConfig {
+            urgent: StateConfig {
                 color: ColorConfig {
                     text: Color::rgb(0xff, 0xff, 0xff),
                     background: Color::rgb(0x77, 0x28, 0x2d),
@@ -139,13 +146,8 @@ impl WorkspaceConfig {
 pub struct VolumeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
-    pub muted: VolumeStateConfig,
+    pub muted: StateConfig,
     pub format: Vec<VolumeFormatItem>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VolumeStateConfig {
-    pub color: ColorConfig,
 }
 
 impl VolumeConfig {
@@ -153,7 +155,7 @@ impl VolumeConfig {
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
-            muted: VolumeStateConfig {
+            muted: StateConfig {
                 color: ColorConfig {
                     text: DEGRADED,
                     ..*color
@@ -167,14 +169,15 @@ impl VolumeConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
 pub enum VolumeFormatItem {
     Volume,
     Label(String),
 }
 
-impl VolumeFormatItem {
-    pub(crate) fn parse(s: String) -> Self {
+impl From<String> for VolumeFormatItem {
+    fn from(s: String) -> Self {
         match s.as_str() {
             "[volume]" => Self::Volume,
             _ => Self::Label(s),
@@ -258,14 +261,15 @@ impl BatteryConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
 pub enum BatteryFormatItem {
     Capacity,
     Label(String),
 }
 
-impl BatteryFormatItem {
-    pub(crate) fn parse(s: String) -> Self {
+impl From<String> for BatteryFormatItem {
+    fn from(s: String) -> Self {
         match s.as_str() {
             "[capacity]" => Self::Capacity,
             _ => Self::Label(s),
@@ -315,14 +319,15 @@ impl WirelessConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
 pub enum WirelessFormatItem {
     Quality,
     Label(String),
 }
 
-impl WirelessFormatItem {
-    pub(crate) fn parse(s: String) -> Self {
+impl From<String> for WirelessFormatItem {
+    fn from(s: String) -> Self {
         match s.as_str() {
             "[quality]" => Self::Quality,
             _ => Self::Label(s),
@@ -367,7 +372,8 @@ impl TimeConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
 pub enum TimeFormatItem {
     Hour,
     Minute,
@@ -376,8 +382,8 @@ pub enum TimeFormatItem {
     Label(String),
 }
 
-impl TimeFormatItem {
-    pub(crate) fn parse(s: String) -> Self {
+impl From<String> for TimeFormatItem {
+    fn from(s: String) -> Self {
         match s.as_str() {
             "[hour]" => Self::Hour,
             "[minute]" => Self::Minute,
@@ -425,14 +431,15 @@ impl CpuConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
 pub enum CpuFormatItem {
     Usage,
     Label(String),
 }
 
-impl CpuFormatItem {
-    pub(crate) fn parse(s: String) -> Self {
+impl From<String> for CpuFormatItem {
+    fn from(s: String) -> Self {
         match s.as_str() {
             "[usage]" => Self::Usage,
             _ => Self::Label(s),
@@ -452,7 +459,15 @@ impl FormatItem for CpuFormatItem {
 
 impl Default for Config {
     fn default() -> Self {
-        Self::from(shadow::Config::default())
+        Self {
+            bar: BarConfig::default(),
+            workspace: WorkspaceConfig::default(),
+            wireless: HashMap::new(),
+            volume: HashMap::new(),
+            battery: HashMap::new(),
+            time: HashMap::new(),
+            cpu: HashMap::new(),
+        }
     }
 }
 
@@ -466,13 +481,11 @@ impl Config {
             fail!("{} not found", path.display());
         };
 
-        toml::Value::Table(toml)
-            .try_into()
-            .expect("Failed to parse configuration")
+        toml.into()
     }
 
     fn from_dir(path: &Path) -> Self {
-        let mut toml = load_toml(&path.join("config.toml")).unwrap_or_else(toml::Table::new);
+        let mut toml = load_toml(&path.join("config.toml")).unwrap_or_default();
 
         for p in config_paths(&path.join("conf.d")) {
             let Some(c) = load_toml(&p) else {
@@ -483,9 +496,7 @@ impl Config {
             merge_toml(&mut toml, c);
         }
 
-        toml::Value::Table(toml)
-            .try_into()
-            .expect("Failed to parse configuration")
+        toml.into()
     }
 }
 
@@ -564,365 +575,214 @@ fn merge_toml(base: &mut toml::Table, update: toml::Table) {
     }
 }
 
-mod shadow {
-    use crate::color::Color;
-    use serde::Deserialize;
-    use std::collections::HashMap;
+trait Table {
+    fn visit<T: Visit>(self, config: &mut T);
+}
 
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct Config {
-        pub bar: BarConfig,
-        pub workspace: WorkspaceConfig,
-        pub wireless: HashMap<String, WirelessConfig>,
-        pub volume: HashMap<String, VolumeConfig>,
-        pub battery: HashMap<String, BatteryConfig>,
-        pub time: HashMap<String, TimeConfig>,
-        pub cpu: HashMap<String, CpuConfig>,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct BarConfig {
-        pub fonts: Option<String>,
-        pub width: Option<u32>,
-        pub interval: Option<u64>,
-        pub separator: Option<u32>,
-        pub blocks: Option<Vec<String>>,
-        pub color: ColorConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct WorkspaceConfig {
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub active: WorkspaceStateConfig,
-        pub inactive: WorkspaceStateConfig,
-        pub urgent: WorkspaceStateConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct WorkspaceStateConfig {
-        pub color: ColorConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct VolumeConfig {
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub color: ColorConfig,
-        pub muted: VolumeStateConfig,
-        pub format: Option<Vec<String>>,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct VolumeStateConfig {
-        pub color: ColorConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct BatteryConfig {
-        pub path: Option<std::path::PathBuf>,
-        pub poll: Option<bool>,
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub color: ColorConfig,
-        pub format: Option<Vec<String>>,
-        pub charging: StateConfig,
-        pub full: StateConfig,
-        pub idle: StateConfig,
-        pub unknown: StateConfig,
-        pub low: ThresholdStateConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct StateConfig {
-        pub color: ColorConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct ThresholdStateConfig {
-        #[serde(flatten)]
-        pub state: StateConfig,
-        pub threshold: Option<u8>,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct WirelessConfig {
-        pub interface: Option<String>,
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub color: ColorConfig,
-        pub format: Option<Vec<String>>,
-        pub low: ThresholdStateConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct TimeConfig {
-        pub timezone: Option<String>,
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub color: ColorConfig,
-        pub format: Option<Vec<String>>,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct CpuConfig {
-        #[serde(flatten)]
-        pub block: BlockConfig,
-        pub color: ColorConfig,
-        pub format: Option<Vec<String>>,
-        pub high: ThresholdStateConfig,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default)]
-    pub(super) struct BlockConfig {
-        pub margins: Option<[i32; 4]>,
-        pub borders: Option<[i32; 4]>,
-        pub height: Option<i32>,
-    }
-
-    #[derive(Default, Deserialize)]
-    #[serde(default, deny_unknown_fields)]
-    pub(super) struct ColorConfig {
-        pub text: Option<Color>,
-        pub background: Option<Color>,
-        pub border: Option<Color>,
-    }
-
-    impl WorkspaceConfig {
-        pub(super) fn resolve(self, default: &super::WorkspaceConfig) -> super::WorkspaceConfig {
-            super::WorkspaceConfig {
-                block: self.block.resolve(&default.block),
-                active: self.active.resolve(&default.active),
-                inactive: self.inactive.resolve(&default.inactive),
-                urgent: self.urgent.resolve(&default.urgent),
-            }
-        }
-    }
-
-    impl WorkspaceStateConfig {
-        pub(super) fn resolve(
-            self,
-            default: &super::WorkspaceStateConfig,
-        ) -> super::WorkspaceStateConfig {
-            super::WorkspaceStateConfig {
-                color: self.color.resolve(&default.color),
-            }
-        }
-    }
-
-    impl VolumeStateConfig {
-        pub(super) fn resolve(
-            self,
-            default: &super::VolumeStateConfig,
-        ) -> super::VolumeStateConfig {
-            super::VolumeStateConfig {
-                color: self.color.resolve(&default.color),
-            }
-        }
-    }
-
-    impl VolumeConfig {
-        pub(super) fn resolve(self, default: &super::VolumeConfig) -> super::VolumeConfig {
-            super::VolumeConfig {
-                block: self.block.resolve(&default.block),
-                color: self.color.resolve(&default.color),
-                muted: self.muted.resolve(&default.muted),
-                format: self
-                    .format
-                    .map(|v| v.into_iter().map(super::VolumeFormatItem::parse).collect())
-                    .unwrap_or_else(|| default.format.clone()),
-            }
-        }
-    }
-
-    impl StateConfig {
-        pub(super) fn resolve(self, default: &super::StateConfig) -> super::StateConfig {
-            super::StateConfig {
-                color: self.color.resolve(&default.color),
-            }
-        }
-    }
-
-    impl ThresholdStateConfig {
-        pub(super) fn resolve(
-            self,
-            default: &super::ThresholdStateConfig,
-        ) -> super::ThresholdStateConfig {
-            super::ThresholdStateConfig {
-                state: self.state.resolve(&default.state),
-                threshold: self.threshold.unwrap_or(default.threshold),
-            }
-        }
-    }
-
-    impl BatteryConfig {
-        pub(super) fn resolve(self, default: &super::BatteryConfig) -> super::BatteryConfig {
-            super::BatteryConfig {
-                path: self.path.unwrap_or_else(|| default.path.clone()),
-                poll: self.poll.unwrap_or(default.poll),
-                block: self.block.resolve(&default.block),
-                color: self.color.resolve(&default.color),
-                format: self
-                    .format
-                    .map(|v| v.into_iter().map(super::BatteryFormatItem::parse).collect())
-                    .unwrap_or_else(|| default.format.clone()),
-                charging: self.charging.resolve(&default.charging),
-                full: self.full.resolve(&default.full),
-                idle: self.idle.resolve(&default.idle),
-                unknown: self.unknown.resolve(&default.unknown),
-                low: self.low.resolve(&default.low),
-            }
-        }
-    }
-
-    impl WirelessConfig {
-        pub(super) fn resolve(self, default: &super::WirelessConfig) -> super::WirelessConfig {
-            super::WirelessConfig {
-                interface: self.interface.unwrap_or_else(|| default.interface.clone()),
-                block: self.block.resolve(&default.block),
-                color: self.color.resolve(&default.color),
-                format: self
-                    .format
-                    .map(|v| {
-                        v.into_iter()
-                            .map(super::WirelessFormatItem::parse)
-                            .collect()
-                    })
-                    .unwrap_or_else(|| default.format.clone()),
-                low: self.low.resolve(&default.low),
-            }
-        }
-    }
-
-    impl TimeConfig {
-        pub(super) fn resolve(self, default: &super::TimeConfig) -> super::TimeConfig {
-            let timezone = if let Some(tz_name) = &self.timezone {
-                match tz::TimeZone::from_posix_tz(tz_name) {
-                    Ok(tz) => tz,
-                    Err(e) => {
-                        crate::fail!("Cannot read timezone: {}", e);
-                    }
-                }
-            } else {
-                default.timezone.clone()
-            };
-
-            super::TimeConfig {
-                timezone,
-                block: self.block.resolve(&default.block),
-                color: self.color.resolve(&default.color),
-                format: self
-                    .format
-                    .map(|v| v.into_iter().map(super::TimeFormatItem::parse).collect())
-                    .unwrap_or_else(|| default.format.clone()),
-            }
-        }
-    }
-
-    impl CpuConfig {
-        pub(super) fn resolve(self, default: &super::CpuConfig) -> super::CpuConfig {
-            super::CpuConfig {
-                block: self.block.resolve(&default.block),
-                color: self.color.resolve(&default.color),
-                format: self
-                    .format
-                    .map(|v| v.into_iter().map(super::CpuFormatItem::parse).collect())
-                    .unwrap_or_else(|| default.format.clone()),
-                high: self.high.resolve(&default.high),
-            }
-        }
-    }
-
-    impl BlockConfig {
-        pub(super) fn resolve(self, default: &super::BlockConfig) -> super::BlockConfig {
-            super::BlockConfig {
-                margins: self.margins.unwrap_or(default.margins),
-                borders: self.borders.unwrap_or(default.borders),
-                height: self.height.unwrap_or(default.height),
-            }
-        }
-    }
-
-    impl ColorConfig {
-        pub(super) fn resolve(self, default: &super::ColorConfig) -> super::ColorConfig {
-            super::ColorConfig {
-                text: self.text.unwrap_or(default.text),
-                background: self.background.unwrap_or(default.background),
-                border: self.border.unwrap_or(default.border),
-            }
+impl Table for Option<toml::Table> {
+    fn visit<T: Visit>(self, config: &mut T) {
+        if let Some(table) = self {
+            config.visit(Toml::new(table));
         }
     }
 }
 
-impl From<shadow::Config> for Config {
-    fn from(shadow: shadow::Config) -> Self {
-        let bar = BarConfig::from(shadow.bar);
-        let workspace = WorkspaceConfig::default();
-        let cpu = CpuConfig::default(&bar.color);
-        let wireless = WirelessConfig::default(&bar.color);
-        let volume = VolumeConfig::default(&bar.color);
-        let battery = BatteryConfig::default(&bar.color);
-        let time = TimeConfig::default(&bar.color);
-        Self {
-            workspace: shadow.workspace.resolve(&workspace),
-            cpu: shadow
-                .cpu
-                .into_iter()
-                .map(|(name, config)| (name, config.resolve(&cpu)))
-                .collect(),
-            wireless: shadow
-                .wireless
-                .into_iter()
-                .map(|(name, config)| (name, config.resolve(&wireless)))
-                .collect(),
-            volume: shadow
-                .volume
-                .into_iter()
-                .map(|(name, config)| (name, config.resolve(&volume)))
-                .collect(),
-            battery: shadow
-                .battery
-                .into_iter()
-                .map(|(name, config)| (name, config.resolve(&battery)))
-                .collect(),
-            time: shadow
-                .time
-                .into_iter()
-                .map(|(name, config)| (name, config.resolve(&time)))
-                .collect(),
-            bar,
+trait Set<T> {
+    fn set(self, value: &mut T);
+}
+
+impl<T> Set<T> for Option<T> {
+    fn set(self, value: &mut T) {
+        if let Some(v) = self {
+            *value = v;
         }
     }
 }
 
-impl From<shadow::BarConfig> for BarConfig {
-    fn from(shadow: shadow::BarConfig) -> Self {
-        let d = BarConfig::default();
-        Self {
-            fonts: shadow.fonts.unwrap_or(d.fonts),
-            width: shadow.width.unwrap_or(d.width),
-            interval: shadow
-                .interval
-                .map(Duration::from_secs)
-                .unwrap_or(d.interval),
-            separator: shadow.separator.unwrap_or(d.separator),
-            blocks: shadow.blocks.unwrap_or(d.blocks),
-            color: shadow.color.resolve(&d.color),
+struct Toml {
+    table: toml::Table,
+}
+
+impl Toml {
+    fn new(table: toml::Table) -> Self {
+        Self { table }
+    }
+
+    fn get<T>(&mut self, key: &str) -> Option<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        self.table.remove(key).map(|value| {
+            value
+                .try_into()
+                .unwrap_or_else(|e| panic!("invalid {}: {}", key, e))
+        })
+    }
+
+    fn merge<T>(&mut self, key: &str, target: &mut HashMap<String, T>, default: T)
+    where
+        T: Clone + Visit,
+    {
+        if let Some(map) = self.get::<toml::Table>(key) {
+            *target = map
+                .into_iter()
+                .map(|(name, value)| {
+                    let table: toml::Table = value
+                        .try_into()
+                        .unwrap_or_else(|e| panic!("invalid {}: {}", name, e));
+                    let mut instance = default.clone();
+                    instance.visit(Self::new(table));
+                    (name, instance)
+                })
+                .collect();
         }
     }
+
+    fn empty(self) {
+        if let Some(key) = self.table.keys().next() {
+            panic!("unknown field {}", key);
+        }
+    }
+}
+
+trait Visit {
+    fn visit(&mut self, toml: Toml);
+}
+
+impl Visit for ColorConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        toml.get("text").set(&mut self.text);
+        toml.get("background").set(&mut self.background);
+        toml.get("border").set(&mut self.border);
+        toml.empty();
+    }
+}
+
+impl Visit for StateConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        toml.get("color").visit(&mut self.color);
+        toml.empty();
+    }
+}
+
+impl Visit for ThresholdStateConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        toml.get("threshold").set(&mut self.threshold);
+        toml.get("color").visit(&mut self.state.color);
+        toml.empty();
+    }
+}
+
+impl Visit for WorkspaceConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("active").visit(&mut self.active);
+        toml.get("inactive").visit(&mut self.inactive);
+        toml.get("urgent").visit(&mut self.urgent);
+        toml.empty();
+    }
+}
+
+impl Visit for VolumeConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("format").set(&mut self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.get("muted").visit(&mut self.muted);
+        toml.empty();
+    }
+}
+
+impl Visit for BatteryConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("path").set(&mut self.path);
+        toml.get("poll").set(&mut self.poll);
+        toml.get("format").set(&mut self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.get("charging").visit(&mut self.charging);
+        toml.get("full").visit(&mut self.full);
+        toml.get("idle").visit(&mut self.idle);
+        toml.get("unknown").visit(&mut self.unknown);
+        toml.get("low").visit(&mut self.low);
+        toml.empty();
+    }
+}
+
+impl Visit for WirelessConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("interface").set(&mut self.interface);
+        toml.get("format").set(&mut self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.get("low").visit(&mut self.low);
+        toml.empty();
+    }
+}
+
+impl Visit for TimeConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("timezone")
+            .map(|tz: String| {
+                tz::TimeZone::from_posix_tz(&tz)
+                    .unwrap_or_else(|e| panic!("cannot read timezone {}: {}", tz, e))
+            })
+            .set(&mut self.timezone);
+        toml.get("format").set(&mut self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.empty();
+    }
+}
+
+impl Visit for CpuConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+        toml.get("format").set(&mut self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.get("high").visit(&mut self.high);
+        toml.empty();
+    }
+}
+
+impl Visit for Config {
+    fn visit(&mut self, mut toml: Toml) {
+        toml.get("bar").set(&mut self.bar);
+        toml.get("workspace").visit(&mut self.workspace);
+        toml.merge("cpu", &mut self.cpu, CpuConfig::default(&self.bar.color));
+        toml.merge(
+            "wireless",
+            &mut self.wireless,
+            WirelessConfig::default(&self.bar.color),
+        );
+        toml.merge(
+            "volume",
+            &mut self.volume,
+            VolumeConfig::default(&self.bar.color),
+        );
+        toml.merge(
+            "battery",
+            &mut self.battery,
+            BatteryConfig::default(&self.bar.color),
+        );
+        toml.merge("time", &mut self.time, TimeConfig::default(&self.bar.color));
+        toml.empty();
+    }
+}
+
+impl From<toml::Table> for Config {
+    fn from(table: toml::Table) -> Self {
+        let mut config = Self::default();
+        config.visit(Toml::new(table));
+        config
+    }
+}
+
+fn duration_from_secs<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    u64::deserialize(deserializer).map(Duration::from_secs)
 }
 
 #[cfg(test)]
@@ -964,6 +824,52 @@ mod tests {
         assert_eq!(config.volume.len(), 0);
         assert_eq!(config.battery.len(), 0);
         assert_eq!(config.time.len(), 0);
+    }
+
+    #[test]
+    fn panics_on_unknown_root_field() {
+        let result =
+            std::panic::catch_unwind(|| toml::from_str::<Config>("unexpected = true").unwrap());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn panics_on_unknown_section_fields() {
+        let sections = [
+            "[bar]",
+            "[workspace]",
+            "[cpu.0]",
+            "[wireless.0]",
+            "[volume.0]",
+            "[battery.0]",
+            "[time.0]",
+            "[bar.color]",
+            "[workspace.active]",
+            "[cpu.0.high]",
+        ];
+
+        for section in sections {
+            let input = format!("{section}\nunexpected = true");
+            let result = std::panic::catch_unwind(|| toml::from_str::<Config>(&input).unwrap());
+
+            assert!(result.is_err(), "{} accepted an unknown field", section);
+        }
+    }
+
+    #[test]
+    fn panics_on_invalid_nested_value() {
+        let result = std::panic::catch_unwind(|| {
+            toml::from_str::<Config>(
+                r###"
+                [cpu.0.color]
+                text = 1
+                "###,
+            )
+            .unwrap()
+        });
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1342,6 +1248,34 @@ mod tests {
             c.format,
             vec![CpuFormatItem::Usage, CpuFormatItem::Label("hello".into()),]
         );
+    }
+
+    #[test]
+    fn format_can_be_empty() {
+        let config: Config = toml::from_str(
+            r###"
+            [cpu.0]
+            format = []
+            "###,
+        )
+        .unwrap();
+
+        assert!(config.cpu.get("0").unwrap().format.is_empty());
+    }
+
+    #[test]
+    fn format_rejects_non_string_items() {
+        let result = std::panic::catch_unwind(|| {
+            toml::from_str::<Config>(
+                r###"
+                [cpu.0]
+                format = ["[usage]", 1]
+                "###,
+            )
+            .unwrap()
+        });
+
+        assert!(result.is_err());
     }
 
     #[test]
