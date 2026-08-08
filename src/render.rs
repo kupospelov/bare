@@ -116,8 +116,7 @@ impl Renderer {
         if outer.w > 0 && outer.h > 0 {
             self.draw_borders(map, outer, config.borders, border);
         }
-        if inner.w > 0 && inner.h > 0 {
-            // TODO: Skip if the bar background has the same color.
+        if inner.w > 0 && inner.h > 0 && self.bg_color != background {
             map.fill(inner, background);
         }
         inner
@@ -573,12 +572,13 @@ mod tests {
             r###"
             [bar]
             fonts = "Sans 10px"
-            blocks = [ "time.0", "time.1" ]
-
-            [time.1]
-            format = [ "CD" ]
+            blocks = [ "time.1", "time.0" ]
 
             [time.0]
+            format = [ "CD" ]
+            color.background = "#ff0000"
+
+            [time.1]
             format = [ "AB" ]
             "###,
         )
@@ -618,7 +618,7 @@ mod tests {
                     w: BAR_WIDTH,
                     h: font_height as u32,
                 },
-                color: BG,
+                color: Color::rgb(255, 0, 0),
             },
             Call::Copy {
                 region: Region {
@@ -661,15 +661,6 @@ mod tests {
             color: BG,
         }];
         let render_time1 = vec![
-            Call::Fill {
-                region: Region {
-                    x: 0,
-                    y: start,
-                    w: BAR_WIDTH,
-                    h: font_height as u32,
-                },
-                color: BG,
-            },
             Call::Copy {
                 region: Region {
                     x: 0,
