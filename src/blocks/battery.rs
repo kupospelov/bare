@@ -1,4 +1,4 @@
-use super::{Block, Instance, Line};
+use super::{Block, BlockDirty, Instance, Line};
 use crate::blocks::FormatItem;
 use crate::config::{BatteryConfig, BatteryFormatItem, BlockConfig, ColorConfig};
 use crate::raster::Rasterizer;
@@ -26,13 +26,16 @@ impl Group {
         Instance::Battery(n)
     }
 
-    pub fn update(&mut self, dirty: &mut Vec<usize>) {
+    pub fn update(&mut self, dirty: &mut Vec<BlockDirty>) {
         for instance in &mut self.instances {
             if instance.config.poll
                 && let Some(event) = instance.read_event_from_path(false)
                 && instance.update_state(&event)
             {
-                dirty.push(instance.id);
+                dirty.push(BlockDirty {
+                    index: instance.id,
+                    layout: false,
+                });
             }
         }
     }
@@ -65,7 +68,10 @@ impl Group {
                                         instance.id
                                     };
 
-                                    state.mark_all_outputs_block_dirty(id);
+                                    state.mark_all_outputs_block_dirty(BlockDirty {
+                                        index: id,
+                                        layout: false,
+                                    });
                                 }
                             }
                             Err(nix::errno::Errno::EAGAIN) => break,

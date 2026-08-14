@@ -141,6 +141,10 @@ with the bar font size to avoid vertical shifts.
 	The volume has the *muted* state. The state defines a color section, e.g.
 	*\[muted.color\]*. See *COLORS* for more information.
 
+	*muted.format*=_\[token, ...\]_
+
+		Default: \["MUT", "\[volume\]"\]
+
 ## Battery
 
 	Display the battery capacity.
@@ -302,6 +306,9 @@ border = "#994c4c"
 
 [volume.0]
 format = ["VOL", "[volume]"]
+
+[volume.0.muted]
+format = ["MUT"]
 
 [volume.0.muted.color]
 text = "#dfaf8f"

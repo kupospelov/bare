@@ -327,6 +327,7 @@ impl Renderer {
         blocks: &mut Blocks,
     ) {
         map.clear(dirty, self.bg_color);
+        debug!("Output {}: clear {}", output_id, dirty);
 
         let font_size = output_layout.font_size;
         let ws_height = workspaces.height();

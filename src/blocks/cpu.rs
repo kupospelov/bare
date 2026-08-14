@@ -1,6 +1,6 @@
 use std::fs;
 
-use super::{Block, Instance, Line};
+use super::{Block, BlockDirty, Instance, Line};
 use crate::blocks::FormatItem;
 use crate::config::{BlockConfig, ColorConfig, CpuConfig, CpuFormatItem};
 use crate::raster::Rasterizer;
@@ -51,7 +51,7 @@ impl Group {
         Instance::Cpu(n)
     }
 
-    pub fn update(&mut self, dirty: &mut Vec<usize>) {
+    pub fn update(&mut self, dirty: &mut Vec<BlockDirty>) {
         let Some(event) = read_proc_stat() else {
             return;
         };
@@ -61,7 +61,10 @@ impl Group {
                 continue;
             }
 
-            dirty.push(instance.id);
+            dirty.push(BlockDirty {
+                index: instance.id,
+                layout: false,
+            });
         }
     }
 }

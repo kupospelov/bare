@@ -1,4 +1,4 @@
-use super::{Block, Fd, Instance, Line};
+use super::{Block, BlockDirty, Fd, Instance, Line};
 use crate::blocks::FormatItem;
 use crate::config::{BlockConfig, ColorConfig, VolumeConfig, VolumeFormatItem};
 use crate::raster::Rasterizer;
@@ -198,15 +198,15 @@ impl Group {
                     let current = sinks.read().unwrap().current();
 
                     for i in 0..state.blocks.volume.instances.len() {
-                        let id = {
+                        let dirty = {
                             let instance = &mut state.blocks.volume.instances[i];
-                            if !instance.update(&current) {
+                            let Some(update) = instance.update(&current) else {
                                 continue;
-                            }
-                            instance.id
+                            };
+                            update
                         };
 
-                        state.mark_all_outputs_block_dirty(id);
+                        state.mark_all_outputs_block_dirty(dirty);
                     }
 
                     Ok(calloop::PostAction::Continue)
@@ -282,12 +282,25 @@ impl Volume {
         }
     }
 
-    fn update(&mut self, current: &SinkState) -> bool {
-        if &self.sink == current {
-            return false;
+    fn update(&mut self, current: &SinkState) -> Option<BlockDirty> {
+        let layout = self.sink.mute != current.mute;
+        if layout || self.sink.percent != current.percent {
+            self.sink = current.clone();
+            Some(BlockDirty {
+                index: self.id,
+                layout,
+            })
+        } else {
+            None
         }
-        self.sink = current.clone();
-        true
+    }
+
+    fn format(&self) -> &[VolumeFormatItem] {
+        if self.sink.mute {
+            &self.config.muted.format
+        } else {
+            &self.config.format
+        }
     }
 }
 
@@ -305,11 +318,11 @@ impl Block for Volume {
     }
 
     fn len(&self) -> usize {
-        self.config.format.len()
+        self.format().len()
     }
 
     fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
-        let item = &self.config.format[index];
+        let item = &self.format()[index];
         Line {
             height: item.height(rasterizer, scale),
             text: match item {
@@ -320,5 +333,85 @@ impl Block for Volume {
                 VolumeFormatItem::Label(s) => s.clone(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_changes() {
+        let mut config = VolumeConfig::default(&ColorConfig::default());
+        config.format = vec![VolumeFormatItem::Label("VOL".into())];
+        config.muted.format = vec![
+            VolumeFormatItem::Label("MUT".into()),
+            VolumeFormatItem::Volume,
+        ];
+        let mut volume = Volume::new(3, &config);
+
+        // Initialize
+        let dirty = volume
+            .update(&SinkState {
+                percent: Some(50),
+                mute: false,
+            })
+            .unwrap();
+        assert_eq!(volume.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false
+            }
+        );
+
+        // Volume changes
+        let dirty = volume
+            .update(&SinkState {
+                percent: Some(40),
+                mute: false,
+            })
+            .unwrap();
+        assert_eq!(volume.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false,
+            }
+        );
+
+        // Mute
+        let dirty = volume
+            .update(&SinkState {
+                percent: Some(40),
+                mute: true,
+            })
+            .unwrap();
+        assert_eq!(volume.format(), config.muted.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true,
+            }
+        );
+
+        // Unmute
+        let dirty = volume
+            .update(&SinkState {
+                percent: Some(40),
+                mute: false,
+            })
+            .unwrap();
+        assert_eq!(volume.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true,
+            }
+        );
     }
 }

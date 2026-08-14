@@ -123,6 +123,7 @@ impl WorkspaceConfig {
                     background: Color::rgb(0x28, 0x55, 0x77),
                     border: Color::rgb(0x4c, 0x78, 0x99),
                 },
+                format: Vec::new(),
             },
             inactive: StateConfig {
                 color: ColorConfig {
@@ -130,6 +131,7 @@ impl WorkspaceConfig {
                     background: Color::rgb(0x22, 0x22, 0x22),
                     border: Color::rgb(0x33, 0x33, 0x33),
                 },
+                format: Vec::new(),
             },
             urgent: StateConfig {
                 color: ColorConfig {
@@ -137,6 +139,7 @@ impl WorkspaceConfig {
                     background: Color::rgb(0x77, 0x28, 0x2d),
                     border: Color::rgb(0x99, 0x4c, 0x4c),
                 },
+                format: Vec::new(),
             },
         }
     }
@@ -146,7 +149,7 @@ impl WorkspaceConfig {
 pub struct VolumeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
-    pub muted: StateConfig,
+    pub muted: StateConfig<VolumeFormatItem>,
     pub format: Vec<VolumeFormatItem>,
 }
 
@@ -160,6 +163,10 @@ impl VolumeConfig {
                     text: DEGRADED,
                     ..*color
                 },
+                format: vec![
+                    VolumeFormatItem::Label("MUT".into()),
+                    VolumeFormatItem::Volume,
+                ],
             },
             format: vec![
                 VolumeFormatItem::Label("VOL".into()),
@@ -212,13 +219,14 @@ pub struct BatteryConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StateConfig {
+pub struct StateConfig<T = ()> {
     pub color: ColorConfig,
+    pub format: Vec<T>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ThresholdStateConfig {
-    pub state: StateConfig,
+pub struct ThresholdStateConfig<T = ()> {
+    pub state: StateConfig<T>,
     pub threshold: u8,
 }
 
@@ -238,15 +246,19 @@ impl BatteryConfig {
                     text: GOOD,
                     ..*color
                 },
+                format: Vec::new(),
             },
             full: StateConfig {
                 color: color.clone(),
+                format: Vec::new(),
             },
             idle: StateConfig {
                 color: color.clone(),
+                format: Vec::new(),
             },
             unknown: StateConfig {
                 color: color.clone(),
+                format: Vec::new(),
             },
             low: ThresholdStateConfig {
                 state: StateConfig {
@@ -254,6 +266,7 @@ impl BatteryConfig {
                         text: BAD,
                         ..*color
                     },
+                    format: Vec::new(),
                 },
                 threshold: 20,
             },
@@ -312,6 +325,7 @@ impl WirelessConfig {
                         text: BAD,
                         ..*color
                     },
+                    format: Vec::new(),
                 },
                 threshold: 50,
             },
@@ -424,6 +438,7 @@ impl CpuConfig {
                         text: BAD,
                         ..*color
                     },
+                    format: Vec::new(),
                 },
                 threshold: 80,
             },
@@ -658,17 +673,19 @@ impl Visit for ColorConfig {
     }
 }
 
-impl Visit for StateConfig {
+impl<T: serde::de::DeserializeOwned> Visit for StateConfig<T> {
     fn visit(&mut self, mut toml: Toml) {
         toml.get("color").visit(&mut self.color);
+        toml.get("format").set(&mut self.format);
         toml.empty();
     }
 }
 
-impl Visit for ThresholdStateConfig {
+impl<T: serde::de::DeserializeOwned> Visit for ThresholdStateConfig<T> {
     fn visit(&mut self, mut toml: Toml) {
         toml.get("threshold").set(&mut self.threshold);
         toml.get("color").visit(&mut self.state.color);
+        toml.get("format").set(&mut self.state.format);
         toml.empty();
     }
 }
@@ -1191,6 +1208,13 @@ mod tests {
                 VolumeFormatItem::Volume,
             ]
         );
+        assert_eq!(
+            v.muted.format,
+            vec![
+                VolumeFormatItem::Label("MUT".into()),
+                VolumeFormatItem::Volume,
+            ]
+        );
     }
 
     #[test]
@@ -1199,6 +1223,9 @@ mod tests {
             r###"
             [volume.0]
             format = ["[volume]", "hello"]
+
+            [volume.0.muted]
+            format = ["[volume]", "muted"]
             "###,
         )
         .unwrap();
@@ -1209,6 +1236,13 @@ mod tests {
             vec![
                 VolumeFormatItem::Volume,
                 VolumeFormatItem::Label("hello".into()),
+            ]
+        );
+        assert_eq!(
+            v.muted.format,
+            vec![
+                VolumeFormatItem::Volume,
+                VolumeFormatItem::Label("muted".into()),
             ]
         );
     }

@@ -1,4 +1,4 @@
-use crate::blocks::Blocks;
+use crate::blocks::{BlockDirty, Blocks};
 use crate::config::Config;
 use crate::init::Init;
 use crate::render::Renderer;
@@ -115,7 +115,7 @@ impl State {
             surface,
             layer_surface,
         );
-        output.update_layout(
+        output.update_block_layouts(
             &self.blocks,
             &self.renderer.rasterizer,
             self.config.bar.separator,
@@ -142,14 +142,18 @@ impl State {
         }
     }
 
-    pub(crate) fn mark_all_outputs_block_dirty(&mut self, block_idx: usize) {
+    pub(crate) fn mark_all_outputs_block_dirty(&mut self, dirty: BlockDirty) {
         for output in self.outputs.values_mut() {
-            let range = output.block_range(block_idx);
+            let range = if dirty.layout {
+                output.update_block_layout(&self.blocks, &self.renderer.rasterizer, dirty.index)
+            } else {
+                output.block_range(dirty.index)
+            };
             let output_id = output.output.id();
 
             debug!(
                 "Output {}: mark block {} dirty: {}",
-                output_id, block_idx, range
+                output_id, dirty.index, range
             );
             output.mark_dirty(range);
         }
@@ -216,8 +220,8 @@ impl State {
         self.blocks.cpu.update(&mut dirty);
         self.blocks.wireless.update(&mut dirty);
         self.blocks.battery.update(&mut dirty);
-        for id in dirty {
-            self.mark_all_outputs_block_dirty(id);
+        for d in dirty {
+            self.mark_all_outputs_block_dirty(d);
         }
     }
 }
@@ -416,7 +420,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                     o.scale = factor;
                     o.workspace_group
                         .set_scale(&state.config, state.renderer.font_size, factor);
-                    o.update_layout(
+                    o.update_block_layouts(
                         &state.blocks,
                         &state.renderer.rasterizer,
                         state.config.bar.separator,

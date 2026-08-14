@@ -62,6 +62,12 @@ pub enum Instance {
     Cpu(usize),
 }
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub struct BlockDirty {
+    pub index: usize,
+    pub layout: bool,
+}
+
 pub struct Blocks {
     pub order: Vec<Instance>,
     pub time: time::Group,

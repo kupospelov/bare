@@ -1,4 +1,4 @@
-use super::{Block, Instance, Line};
+use super::{Block, BlockDirty, Instance, Line};
 use crate::blocks::FormatItem;
 use crate::config::{BlockConfig, ColorConfig, WirelessConfig, WirelessFormatItem};
 use crate::raster::Rasterizer;
@@ -65,8 +65,8 @@ impl Group {
                                 debug!("Read a netlink event {}", e);
                                 let mut dirty = Vec::new();
                                 state.blocks.wireless.update(&mut dirty);
-                                for id in dirty {
-                                    state.mark_all_outputs_block_dirty(id);
+                                for update in dirty {
+                                    state.mark_all_outputs_block_dirty(update);
                                 }
                             }
                             Err(nix::errno::Errno::EAGAIN) => break,
@@ -82,7 +82,7 @@ impl Group {
             .expect("Failed to insert netlink source");
     }
 
-    pub fn update(&mut self, dirty: &mut Vec<usize>) {
+    pub fn update(&mut self, dirty: &mut Vec<BlockDirty>) {
         let Some(socket) = &mut self.socket else {
             return;
         };
@@ -99,7 +99,10 @@ impl Group {
                 continue;
             }
 
-            dirty.push(instance.id);
+            dirty.push(BlockDirty {
+                index: instance.id,
+                layout: false,
+            });
         }
     }
 }

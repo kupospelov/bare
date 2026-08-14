@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::{Block, Instance, Line};
+use super::{Block, BlockDirty, Instance, Line};
 use crate::blocks::FormatItem;
 use crate::config::{BlockConfig, ColorConfig, TimeConfig, TimeFormatItem};
 use crate::raster::Rasterizer;
@@ -71,7 +71,10 @@ impl Group {
                         instance.id
                     };
 
-                    state.mark_all_outputs_block_dirty(id);
+                    state.mark_all_outputs_block_dirty(BlockDirty {
+                        index: id,
+                        layout: false,
+                    });
                 }
 
                 TimeoutAction::ToInstant(instant + Duration::from_secs(60 - utc.second() as u64))
