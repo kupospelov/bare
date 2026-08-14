@@ -211,11 +211,11 @@ pub struct BatteryConfig {
     pub format: Vec<BatteryFormatItem>,
 
     // States.
-    pub charging: StateConfig,
-    pub full: StateConfig,
-    pub idle: StateConfig,
-    pub unknown: StateConfig,
-    pub low: ThresholdStateConfig,
+    pub charging: StateConfig<BatteryFormatItem>,
+    pub full: StateConfig<BatteryFormatItem>,
+    pub idle: StateConfig<BatteryFormatItem>,
+    pub unknown: StateConfig<BatteryFormatItem>,
+    pub low: ThresholdStateConfig<BatteryFormatItem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,19 +246,31 @@ impl BatteryConfig {
                     text: GOOD,
                     ..*color
                 },
-                format: Vec::new(),
+                format: vec![
+                    BatteryFormatItem::Label("CHR".into()),
+                    BatteryFormatItem::Capacity,
+                ],
             },
             full: StateConfig {
                 color: color.clone(),
-                format: Vec::new(),
+                format: vec![
+                    BatteryFormatItem::Label("FUL".into()),
+                    BatteryFormatItem::Capacity,
+                ],
             },
             idle: StateConfig {
                 color: color.clone(),
-                format: Vec::new(),
+                format: vec![
+                    BatteryFormatItem::Label("IDL".into()),
+                    BatteryFormatItem::Capacity,
+                ],
             },
             unknown: StateConfig {
                 color: color.clone(),
-                format: Vec::new(),
+                format: vec![
+                    BatteryFormatItem::Label("UNK".into()),
+                    BatteryFormatItem::Capacity,
+                ],
             },
             low: ThresholdStateConfig {
                 state: StateConfig {
@@ -266,7 +278,10 @@ impl BatteryConfig {
                         text: BAD,
                         ..*color
                     },
-                    format: Vec::new(),
+                    format: vec![
+                        BatteryFormatItem::Label("LOW".into()),
+                        BatteryFormatItem::Capacity,
+                    ],
                 },
                 threshold: 20,
             },
@@ -1008,6 +1023,41 @@ mod tests {
                 BatteryFormatItem::Capacity,
             ]
         );
+        assert_eq!(
+            b.charging.format,
+            vec![
+                BatteryFormatItem::Label("CHR".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+        assert_eq!(
+            b.full.format,
+            vec![
+                BatteryFormatItem::Label("FUL".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+        assert_eq!(
+            b.idle.format,
+            vec![
+                BatteryFormatItem::Label("IDL".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+        assert_eq!(
+            b.unknown.format,
+            vec![
+                BatteryFormatItem::Label("UNK".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+        assert_eq!(
+            b.low.state.format,
+            vec![
+                BatteryFormatItem::Label("LOW".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
         assert_eq!(b.low.threshold, 20);
         assert_eq!(b.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
         assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1253,6 +1303,12 @@ mod tests {
             r###"
             [battery.0]
             format = ["[capacity]", "hello"]
+
+            [battery.0.charging]
+            format = ["charging", "[capacity]"]
+
+            [battery.0.low]
+            format = ["low", "[capacity]"]
             "###,
         )
         .unwrap();
@@ -1263,6 +1319,20 @@ mod tests {
             vec![
                 BatteryFormatItem::Capacity,
                 BatteryFormatItem::Label("hello".into()),
+            ]
+        );
+        assert_eq!(
+            b.charging.format,
+            vec![
+                BatteryFormatItem::Label("charging".into()),
+                BatteryFormatItem::Capacity,
+            ]
+        );
+        assert_eq!(
+            b.low.state.format,
+            vec![
+                BatteryFormatItem::Label("low".into()),
+                BatteryFormatItem::Capacity,
             ]
         );
     }

@@ -30,12 +30,9 @@ impl Group {
         for instance in &mut self.instances {
             if instance.config.poll
                 && let Some(event) = instance.read_event_from_path(false)
-                && instance.update_state(&event)
+                && let Some(update) = instance.update_state(&event)
             {
-                dirty.push(BlockDirty {
-                    index: instance.id,
-                    layout: false,
-                });
+                dirty.push(update);
             }
         }
     }
@@ -60,18 +57,15 @@ impl Group {
                             Ok(n) => {
                                 let event = parse_event(buf[..n].split(|&b| b == 0), true);
                                 for i in 0..state.blocks.battery.instances.len() {
-                                    let id = {
+                                    let update = {
                                         let instance = &mut state.blocks.battery.instances[i];
-                                        if !instance.update(&event) {
+                                        let Some(update) = instance.update(&event) else {
                                             continue;
-                                        }
-                                        instance.id
+                                        };
+                                        update
                                     };
 
-                                    state.mark_all_outputs_block_dirty(BlockDirty {
-                                        index: id,
-                                        layout: false,
-                                    });
+                                    state.mark_all_outputs_block_dirty(update);
                                 }
                             }
                             Err(nix::errno::Errno::EAGAIN) => break,
@@ -191,18 +185,19 @@ impl Battery {
         }
     }
 
-    fn update(&mut self, event: &Event) -> bool {
+    fn update(&mut self, event: &Event) -> Option<BlockDirty> {
         let Some(name) = &event.name else {
-            return false;
+            return None;
         };
         if &self.name != name {
-            return false;
+            return None;
         }
 
         self.update_state(event)
     }
 
-    fn update_state(&mut self, event: &Event) -> bool {
+    fn update_state(&mut self, event: &Event) -> Option<BlockDirty> {
+        let state = self.state;
         let mut dirty = false;
         if let Some(c) = &event.capacity {
             dirty |= self.set_capacity(c.clone());
@@ -214,7 +209,21 @@ impl Battery {
         } else {
             debug!("Battery {}: no reported status", self.name);
         }
-        dirty
+        dirty.then_some(BlockDirty {
+            index: self.id,
+            layout: self.state != state,
+        })
+    }
+
+    fn format(&self) -> &[BatteryFormatItem] {
+        match self.state {
+            BatteryState::Discharging => &self.config.format,
+            BatteryState::Charging => &self.config.charging.format,
+            BatteryState::Full => &self.config.full.format,
+            BatteryState::Idle => &self.config.idle.format,
+            BatteryState::Unknown => &self.config.unknown.format,
+            BatteryState::Low => &self.config.low.state.format,
+        }
     }
 }
 
@@ -272,11 +281,11 @@ impl Block for Battery {
     }
 
     fn len(&self) -> usize {
-        self.config.format.len()
+        self.format().len()
     }
 
     fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
-        let item = &self.config.format[index];
+        let item = &self.format()[index];
         Line {
             height: item.height(rasterizer, scale),
             text: match item {
@@ -284,5 +293,97 @@ impl Block for Battery {
                 BatteryFormatItem::Label(s) => s.clone(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(capacity: u8, status: &str) -> Event {
+        Event {
+            name: None,
+            status: Some(status.into()),
+            capacity: Some(capacity.to_string()),
+        }
+    }
+
+    #[test]
+    fn state_changes() {
+        let mut config = BatteryConfig::default(&ColorConfig::default());
+        config.format = vec![BatteryFormatItem::Label("discharging".into())];
+        config.charging.format = vec![BatteryFormatItem::Label("charging".into())];
+        config.full.format = vec![BatteryFormatItem::Label("full".into())];
+        config.idle.format = vec![BatteryFormatItem::Label("idle".into())];
+        config.unknown.format = vec![BatteryFormatItem::Label("unknown".into())];
+        config.low.state.format = vec![BatteryFormatItem::Label("low".into())];
+
+        // Initialize
+        let mut battery = Battery {
+            id: 3,
+            name: "BAT0".into(),
+            state: BatteryState::Unknown,
+            capacity: 0,
+            config,
+        };
+        assert_eq!(
+            battery.format(),
+            [BatteryFormatItem::Label("unknown".into())]
+        );
+
+        // Discharging
+        let dirty = battery.update_state(&event(50, "Discharging")).unwrap();
+        assert_eq!(
+            battery.format(),
+            [BatteryFormatItem::Label("discharging".into())]
+        );
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true,
+            }
+        );
+
+        // Capacity changes
+        let dirty = battery.update_state(&event(40, "Discharging")).unwrap();
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false,
+            }
+        );
+
+        // Charging
+        let dirty = battery.update_state(&event(40, "Charging")).unwrap();
+        assert_eq!(
+            battery.format(),
+            [BatteryFormatItem::Label("charging".into())]
+        );
+        assert!(dirty.layout);
+
+        // Low
+        let dirty = battery.update_state(&event(10, "Discharging")).unwrap();
+        assert_eq!(battery.format(), [BatteryFormatItem::Label("low".into())]);
+        assert!(dirty.layout);
+
+        // Full
+        let dirty = battery.update_state(&event(100, "Full")).unwrap();
+        assert_eq!(battery.format(), [BatteryFormatItem::Label("full".into())]);
+        assert!(dirty.layout);
+
+        // Idle
+        let dirty = battery.update_state(&event(100, "Not charging")).unwrap();
+        assert_eq!(battery.format(), [BatteryFormatItem::Label("idle".into())]);
+        assert!(dirty.layout);
+
+        // Unknown
+        let dirty = battery.update_state(&event(100, "invalid")).unwrap();
+        assert_eq!(
+            battery.format(),
+            [BatteryFormatItem::Label("unknown".into())]
+        );
+        assert!(dirty.layout);
     }
 }

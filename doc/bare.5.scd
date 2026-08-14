@@ -138,8 +138,8 @@ with the bar font size to avoid vertical shifts.
 		*\[volume\]*
 			Current volume percentage of the default audio sink.
 
-	The volume has the *muted* state. The state defines a color section, e.g.
-	*\[muted.color\]*. See *COLORS* for more information.
+	The volume has the *muted* state. The state defines color and format
+	sections. See *COLORS* for more information.
 
 	*muted.format*=_\[token, ...\]_
 
@@ -173,13 +173,34 @@ with the bar font size to avoid vertical shifts.
 			Current battery capacity percentage.
 
 	The battery has the *charging*, *full*, *idle*, *low*, and *unknown* states.
-	Each state defines a color section, e.g. *\[charging.color\]*. See *COLORS*
-	for more information.
+	Each state defines color and format sections. See *COLORS* for more
+	information.
+
+	*charging.format*=_\[token, ...\]_
+
+		Default: \["CHR", "\[capacity\]"\]
+
+	*full.format*=_\[token, ...\]_
+
+		Default: \["FUL", "\[capacity\]"\]
+
+	*idle.format*=_\[token, ...\]_
+
+		Default: \["IDL", "\[capacity\]"\]
+
+	*low.format*=_\[token, ...\]_
+
+		Default: \["LOW", "\[capacity\]"\]
+
+	*unknown.format*=_\[token, ...\]_
+
+		Default: \["UNK", "\[capacity\]"\]
 
 	*low.threshold*=_threshold_
 		Low charge threshold.
 
 		Default: 20
+
 
 ## Time
 
