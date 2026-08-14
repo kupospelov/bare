@@ -76,7 +76,8 @@ per-state.
 *format* is an array of strings. Each string is either a label or a placeholder.
 Labels longer than 2 characters are rendered with a smaller font size to make
 them aligned with regular 2-character blocks. Placeholders are always rendered
-with the bar font size to avoid vertical shifts.
+with the bar font size to avoid vertical shifts. Each block state has its own
+format that defaults to the regular block format.
 
 ## CPU
 
@@ -141,10 +142,6 @@ with the bar font size to avoid vertical shifts.
 	The volume has the *muted* state. The state defines color and format
 	sections. See *COLORS* for more information.
 
-	*muted.format*=_\[token, ...\]_
-
-		Default: \["MUT", "\[volume\]"\]
-
 ## Battery
 
 	Display the battery capacity.
@@ -175,26 +172,6 @@ with the bar font size to avoid vertical shifts.
 	The battery has the *charging*, *full*, *idle*, *low*, and *unknown* states.
 	Each state defines color and format sections. See *COLORS* for more
 	information.
-
-	*charging.format*=_\[token, ...\]_
-
-		Default: \["CHR", "\[capacity\]"\]
-
-	*full.format*=_\[token, ...\]_
-
-		Default: \["FUL", "\[capacity\]"\]
-
-	*idle.format*=_\[token, ...\]_
-
-		Default: \["IDL", "\[capacity\]"\]
-
-	*low.format*=_\[token, ...\]_
-
-		Default: \["LOW", "\[capacity\]"\]
-
-	*unknown.format*=_\[token, ...\]_
-
-		Default: \["UNK", "\[capacity\]"\]
 
 	*low.threshold*=_threshold_
 		Low charge threshold.

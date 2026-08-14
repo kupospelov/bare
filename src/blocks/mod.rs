@@ -209,7 +209,6 @@ mod tests {
     use super::*;
 
     fn config_with_blocks(entries: &[&str]) -> Config {
-        crate::log::set(crate::log::Level::Error);
         let mut config = Config::default();
         config.bar.blocks = entries.iter().map(|s| (*s).to_string()).collect();
         config

@@ -419,8 +419,6 @@ mod tests {
     }
 
     fn make_renderer() -> Renderer {
-        crate::log::set(crate::log::Level::Error);
-
         let config: Config = toml::from_str(
             r###"
             [bar]

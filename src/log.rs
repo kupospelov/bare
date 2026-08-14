@@ -11,7 +11,7 @@ pub enum Level {
 static LEVEL: OnceLock<Level> = OnceLock::new();
 
 pub fn get() -> Level {
-    LEVEL.get().copied().unwrap()
+    LEVEL.get().copied().unwrap_or(Level::Warning)
 }
 
 pub fn set(level: Level) {

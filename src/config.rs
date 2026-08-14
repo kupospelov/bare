@@ -155,6 +155,11 @@ pub struct VolumeConfig {
 
 impl VolumeConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec![
+            VolumeFormatItem::Label("VOL".into()),
+            VolumeFormatItem::Volume,
+        ];
+
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
@@ -163,15 +168,9 @@ impl VolumeConfig {
                     text: DEGRADED,
                     ..*color
                 },
-                format: vec![
-                    VolumeFormatItem::Label("MUT".into()),
-                    VolumeFormatItem::Volume,
-                ],
+                format: format.clone(),
             },
-            format: vec![
-                VolumeFormatItem::Label("VOL".into()),
-                VolumeFormatItem::Volume,
-            ],
+            format,
         }
     }
 }
@@ -232,45 +231,35 @@ pub struct ThresholdStateConfig<T = ()> {
 
 impl BatteryConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec![
+            BatteryFormatItem::Label("BAT".into()),
+            BatteryFormatItem::Capacity,
+        ];
+
         Self {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             poll: true,
             block: BlockConfig::default(),
             color: color.clone(),
-            format: vec![
-                BatteryFormatItem::Label("BAT".into()),
-                BatteryFormatItem::Capacity,
-            ],
+            format: format.clone(),
             charging: StateConfig {
                 color: ColorConfig {
                     text: GOOD,
                     ..*color
                 },
-                format: vec![
-                    BatteryFormatItem::Label("CHR".into()),
-                    BatteryFormatItem::Capacity,
-                ],
+                format: format.clone(),
             },
             full: StateConfig {
                 color: color.clone(),
-                format: vec![
-                    BatteryFormatItem::Label("FUL".into()),
-                    BatteryFormatItem::Capacity,
-                ],
+                format: format.clone(),
             },
             idle: StateConfig {
                 color: color.clone(),
-                format: vec![
-                    BatteryFormatItem::Label("IDL".into()),
-                    BatteryFormatItem::Capacity,
-                ],
+                format: format.clone(),
             },
             unknown: StateConfig {
                 color: color.clone(),
-                format: vec![
-                    BatteryFormatItem::Label("UNK".into()),
-                    BatteryFormatItem::Capacity,
-                ],
+                format: format.clone(),
             },
             low: ThresholdStateConfig {
                 state: StateConfig {
@@ -278,10 +267,7 @@ impl BatteryConfig {
                         text: BAD,
                         ..*color
                     },
-                    format: vec![
-                        BatteryFormatItem::Label("LOW".into()),
-                        BatteryFormatItem::Capacity,
-                    ],
+                    format,
                 },
                 threshold: 20,
             },
@@ -718,7 +704,10 @@ impl Visit for WorkspaceConfig {
 impl Visit for VolumeConfig {
     fn visit(&mut self, mut toml: Toml) {
         self.block.visit(&mut toml);
+
         toml.get("format").set(&mut self.format);
+        self.muted.format.clone_from(&self.format);
+
         toml.get("color").visit(&mut self.color);
         toml.get("muted").visit(&mut self.muted);
         toml.empty();
@@ -728,9 +717,16 @@ impl Visit for VolumeConfig {
 impl Visit for BatteryConfig {
     fn visit(&mut self, mut toml: Toml) {
         self.block.visit(&mut toml);
+
+        toml.get("format").set(&mut self.format);
+        self.charging.format.clone_from(&self.format);
+        self.full.format.clone_from(&self.format);
+        self.idle.format.clone_from(&self.format);
+        self.unknown.format.clone_from(&self.format);
+        self.low.state.format.clone_from(&self.format);
+
         toml.get("path").set(&mut self.path);
         toml.get("poll").set(&mut self.poll);
-        toml.get("format").set(&mut self.format);
         toml.get("color").visit(&mut self.color);
         toml.get("charging").visit(&mut self.charging);
         toml.get("full").visit(&mut self.full);
@@ -1016,6 +1012,7 @@ mod tests {
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0, 0, 0));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+
         assert_eq!(
             b.format,
             vec![
@@ -1023,41 +1020,12 @@ mod tests {
                 BatteryFormatItem::Capacity,
             ]
         );
-        assert_eq!(
-            b.charging.format,
-            vec![
-                BatteryFormatItem::Label("CHR".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
-        assert_eq!(
-            b.full.format,
-            vec![
-                BatteryFormatItem::Label("FUL".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
-        assert_eq!(
-            b.idle.format,
-            vec![
-                BatteryFormatItem::Label("IDL".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
-        assert_eq!(
-            b.unknown.format,
-            vec![
-                BatteryFormatItem::Label("UNK".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
-        assert_eq!(
-            b.low.state.format,
-            vec![
-                BatteryFormatItem::Label("LOW".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
+        assert_eq!(b.charging.format, b.format);
+        assert_eq!(b.full.format, b.format);
+        assert_eq!(b.idle.format, b.format);
+        assert_eq!(b.unknown.format, b.format);
+        assert_eq!(b.low.state.format, b.format);
+
         assert_eq!(b.low.threshold, 20);
         assert_eq!(b.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
         assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1258,83 +1226,115 @@ mod tests {
                 VolumeFormatItem::Volume,
             ]
         );
-        assert_eq!(
-            v.muted.format,
-            vec![
-                VolumeFormatItem::Label("MUT".into()),
-                VolumeFormatItem::Volume,
-            ]
-        );
+        assert_eq!(v.muted.format, v.format);
     }
 
     #[test]
-    fn volume_format_parses_tokens_and_labels() {
+    fn volume_state_format() {
         let config: Config = toml::from_str(
             r###"
             [volume.0]
-            format = ["[volume]", "hello"]
+            format = ["[volume]", "hello0"]
 
-            [volume.0.muted]
-            format = ["[volume]", "muted"]
+            [volume.1]
+            format = ["[volume]", "hello1"]
+
+            [volume.2]
+            format = ["[volume]", "hello2"]
+
+            [volume.0.muted.color]
+            text = "#123456"
+
+            [volume.1.muted]
+            format = []
+
+            [volume.2.muted]
+            format = ["[volume]", "muted2"]
             "###,
         )
         .unwrap();
 
-        let v = config.volume.get("0").unwrap();
+        // Inherited
+        let v0 = config.volume.get("0").unwrap();
+        assert_eq!(v0.muted.format, v0.format);
+
+        // Empty override
+        let v1 = config.volume.get("1").unwrap();
+        assert_eq!(v1.muted.format, vec![]);
+
+        // Override
+        let v2 = config.volume.get("2").unwrap();
         assert_eq!(
-            v.format,
+            v2.muted.format,
             vec![
                 VolumeFormatItem::Volume,
-                VolumeFormatItem::Label("hello".into()),
-            ]
-        );
-        assert_eq!(
-            v.muted.format,
-            vec![
-                VolumeFormatItem::Volume,
-                VolumeFormatItem::Label("muted".into()),
+                VolumeFormatItem::Label("muted2".into()),
             ]
         );
     }
 
     #[test]
-    fn battery_format_parses_tokens_and_labels() {
+    fn battery_state_format() {
         let config: Config = toml::from_str(
             r###"
             [battery.0]
-            format = ["[capacity]", "hello"]
+            format = ["[capacity]", "hello0"]
 
-            [battery.0.charging]
-            format = ["charging", "[capacity]"]
+            [battery.1]
+            format = ["[capacity]", "hello1"]
+
+            [battery.2]
+            format = ["[capacity]", "hello2"]
 
             [battery.0.low]
-            format = ["low", "[capacity]"]
+            threshold = 30
+
+            [battery.1.charging]
+            format = []
+
+            [battery.2.charging]
+            format = ["charging2", "[capacity]"]
+
+            [battery.2.full]
+            format = ["full2", "[capacity]"]
+
+            [battery.2.idle]
+            format = ["idle2", "[capacity]"]
+
+            [battery.2.unknown]
+            format = ["unknown2", "[capacity]"]
+
+            [battery.2.low]
+            format = ["low2", "[capacity]"]
             "###,
         )
         .unwrap();
 
-        let b = config.battery.get("0").unwrap();
-        assert_eq!(
-            b.format,
+        // Inherited
+        let b0 = config.battery.get("0").unwrap();
+        assert_eq!(b0.charging.format, b0.format);
+        assert_eq!(b0.full.format, b0.format);
+        assert_eq!(b0.idle.format, b0.format);
+        assert_eq!(b0.unknown.format, b0.format);
+        assert_eq!(b0.low.state.format, b0.format);
+
+        // Empty override
+        let b1 = config.battery.get("1").unwrap();
+        assert_eq!(b1.charging.format, vec![]);
+
+        // Overrides
+        let b2 = config.battery.get("2").unwrap();
+        let format = |label: &str| {
             vec![
-                BatteryFormatItem::Capacity,
-                BatteryFormatItem::Label("hello".into()),
-            ]
-        );
-        assert_eq!(
-            b.charging.format,
-            vec![
-                BatteryFormatItem::Label("charging".into()),
-                BatteryFormatItem::Capacity,
-            ]
-        );
-        assert_eq!(
-            b.low.state.format,
-            vec![
-                BatteryFormatItem::Label("low".into()),
+                BatteryFormatItem::Label(label.into()),
                 BatteryFormatItem::Capacity,
             ]
-        );
+        };
+        assert_eq!(b2.charging.format, format("charging2"));
+        assert_eq!(b2.full.format, format("full2"));
+        assert_eq!(b2.idle.format, format("idle2"));
+        assert_eq!(b2.unknown.format, format("unknown2"));
+        assert_eq!(b2.low.state.format, format("low2"));
     }
 
     #[test]
