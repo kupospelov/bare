@@ -307,26 +307,28 @@ pub struct WirelessConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<WirelessFormatItem>,
-    pub low: ThresholdStateConfig,
+    pub low: ThresholdStateConfig<WirelessFormatItem>,
 }
 
 impl WirelessConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec![
+            WirelessFormatItem::Label("NET".into()),
+            WirelessFormatItem::Quality,
+        ];
+
         Self {
             interface: "wlan0".into(),
             block: BlockConfig::default(),
             color: color.clone(),
-            format: vec![
-                WirelessFormatItem::Label("NET".into()),
-                WirelessFormatItem::Quality,
-            ],
+            format: format.clone(),
             low: ThresholdStateConfig {
                 state: StateConfig {
                     color: ColorConfig {
                         text: BAD,
                         ..*color
                     },
-                    format: Vec::new(),
+                    format,
                 },
                 threshold: 50,
             },
@@ -424,22 +426,24 @@ pub struct CpuConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<CpuFormatItem>,
-    pub high: ThresholdStateConfig,
+    pub high: ThresholdStateConfig<CpuFormatItem>,
 }
 
 impl CpuConfig {
     pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage];
+
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
-            format: vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage],
+            format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
                     color: ColorConfig {
                         text: BAD,
                         ..*color
                     },
-                    format: Vec::new(),
+                    format,
                 },
                 threshold: 80,
             },
@@ -740,8 +744,11 @@ impl Visit for BatteryConfig {
 impl Visit for WirelessConfig {
     fn visit(&mut self, mut toml: Toml) {
         self.block.visit(&mut toml);
-        toml.get("interface").set(&mut self.interface);
+
         toml.get("format").set(&mut self.format);
+        self.low.state.format.clone_from(&self.format);
+
+        toml.get("interface").set(&mut self.interface);
         toml.get("color").visit(&mut self.color);
         toml.get("low").visit(&mut self.low);
         toml.empty();
@@ -766,7 +773,10 @@ impl Visit for TimeConfig {
 impl Visit for CpuConfig {
     fn visit(&mut self, mut toml: Toml) {
         self.block.visit(&mut toml);
+
         toml.get("format").set(&mut self.format);
+        self.high.state.format.clone_from(&self.format);
+
         toml.get("color").visit(&mut self.color);
         toml.get("high").visit(&mut self.high);
         toml.empty();
@@ -1081,6 +1091,7 @@ mod tests {
         assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(w.color.background, Color::rgb(0, 0, 0));
         assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+
         assert_eq!(
             w.format,
             vec![
@@ -1088,6 +1099,8 @@ mod tests {
                 WirelessFormatItem::Quality,
             ]
         );
+        assert_eq!(w.low.state.format, w.format);
+
         assert_eq!(w.low.threshold, 50);
         assert_eq!(w.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
         assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1124,26 +1137,6 @@ mod tests {
         assert_eq!(w.low.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
         assert_eq!(w.low.state.color.border, Color::rgb(0, 0, 0));
-    }
-
-    #[test]
-    fn wireless_format_parses_tokens_and_labels() {
-        let config: Config = toml::from_str(
-            r###"
-            [wireless.0]
-            format = ["[quality]", "hello"]
-            "###,
-        )
-        .unwrap();
-
-        let w = config.wireless.get("0").unwrap();
-        assert_eq!(
-            w.format,
-            vec![
-                WirelessFormatItem::Quality,
-                WirelessFormatItem::Label("hello".into()),
-            ]
-        );
     }
 
     #[test]
@@ -1338,33 +1331,88 @@ mod tests {
     }
 
     #[test]
-    fn cpu_format_parses_tokens_and_labels() {
+    fn wireless_state_format() {
         let config: Config = toml::from_str(
             r###"
-            [cpu.0]
-            format = ["[usage]", "hello"]
+            [wireless.0]
+            format = ["[quality]", "hello0"]
+
+            [wireless.1]
+            format = ["[quality]", "hello1"]
+
+            [wireless.2]
+            format = ["[quality]", "hello2"]
+
+            [wireless.0.low]
+            threshold = 40
+
+            [wireless.1.low]
+            format = []
+
+            [wireless.2.low]
+            format = ["low2", "[quality]"]
             "###,
         )
         .unwrap();
 
-        let c = config.cpu.get("0").unwrap();
+        // Inherited
+        let w0 = config.wireless.get("0").unwrap();
+        assert_eq!(w0.low.state.format, w0.format);
+
+        // Empty override
+        let w1 = config.wireless.get("1").unwrap();
+        assert_eq!(w1.low.state.format, vec![]);
+
+        // Override
+        let w2 = config.wireless.get("2").unwrap();
         assert_eq!(
-            c.format,
-            vec![CpuFormatItem::Usage, CpuFormatItem::Label("hello".into()),]
+            w2.low.state.format,
+            vec![
+                WirelessFormatItem::Label("low2".into()),
+                WirelessFormatItem::Quality,
+            ]
         );
     }
 
     #[test]
-    fn format_can_be_empty() {
+    fn cpu_state_format() {
         let config: Config = toml::from_str(
             r###"
             [cpu.0]
+            format = ["[usage]", "hello0"]
+
+            [cpu.1]
+            format = ["[usage]", "hello1"]
+
+            [cpu.2]
+            format = ["[usage]", "hello2"]
+
+            [cpu.0.high]
+            threshold = 90
+
+            [cpu.1.high]
             format = []
+
+            [cpu.2.high]
+            format = ["high2", "[usage]"]
             "###,
         )
         .unwrap();
 
-        assert!(config.cpu.get("0").unwrap().format.is_empty());
+        // Inherited
+        let c0 = config.cpu.get("0").unwrap();
+        assert_eq!(c0.high.state.format, c0.format);
+
+        // Empty override
+        let c1 = config.cpu.get("1").unwrap();
+        assert_eq!(c1.high.state.format, vec![]);
+
+        // Override
+        let c2 = config.cpu.get("2").unwrap();
+        assert_eq!(
+            c2.high.state.format,
+            vec![CpuFormatItem::Label("high2".into()), CpuFormatItem::Usage,]
+        );
     }
 
     #[test]

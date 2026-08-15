@@ -57,14 +57,9 @@ impl Group {
         };
 
         for instance in &mut self.instances {
-            if !instance.update(&event) {
-                continue;
+            if let Some(update) = instance.update(&event) {
+                dirty.push(update);
             }
-
-            dirty.push(BlockDirty {
-                index: instance.id,
-                layout: false,
-            });
         }
     }
 }
@@ -88,7 +83,7 @@ impl Cpu {
         }
     }
 
-    fn update(&mut self, event: &Event) -> bool {
+    fn update(&mut self, event: &Event) -> Option<BlockDirty> {
         let diff_idle = event.idle.saturating_sub(self.idle) as f64;
         let diff_total = event.total.saturating_sub(self.total) as f64;
         let value = 100.0 * diff_idle / diff_total;
@@ -98,10 +93,26 @@ impl Cpu {
         self.total = event.total;
         if usage != self.usage {
             debug!("Updated CPU usage: {:?}", usage);
+            let high = self.is_high();
             self.usage = usage;
-            true
+            Some(BlockDirty {
+                index: self.id,
+                layout: high != self.is_high(),
+            })
         } else {
-            false
+            None
+        }
+    }
+
+    fn is_high(&self) -> bool {
+        self.usage > self.config.high.threshold
+    }
+
+    fn format(&self) -> &[CpuFormatItem] {
+        if self.is_high() {
+            &self.config.high.state.format
+        } else {
+            &self.config.format
         }
     }
 }
@@ -112,7 +123,7 @@ impl Block for Cpu {
     }
 
     fn colors(&self) -> &ColorConfig {
-        if self.usage > self.config.high.threshold {
+        if self.is_high() {
             &self.config.high.state.color
         } else {
             &self.config.color
@@ -120,11 +131,11 @@ impl Block for Cpu {
     }
 
     fn len(&self) -> usize {
-        self.config.format.len()
+        self.format().len()
     }
 
     fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
-        let item = &self.config.format[index];
+        let item = &self.format()[index];
         Line {
             height: item.height(rasterizer, scale),
             text: match item {
@@ -132,5 +143,82 @@ impl Block for Cpu {
                 CpuFormatItem::Label(s) => s.clone(),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_changes() {
+        let mut config = CpuConfig::default(&ColorConfig::default());
+        config.format = vec![CpuFormatItem::Label("normal".into())];
+        config.high.state.format = vec![CpuFormatItem::Label("high".into()), CpuFormatItem::Usage];
+        let mut cpu = Cpu::new(3, &config);
+
+        // Initialize
+        let dirty = cpu
+            .update(&Event {
+                idle: 50,
+                total: 100,
+            })
+            .unwrap();
+        assert_eq!(cpu.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false
+            }
+        );
+
+        // High
+        let dirty = cpu
+            .update(&Event {
+                idle: 60,
+                total: 200,
+            })
+            .unwrap();
+        assert_eq!(cpu.format(), config.high.state.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true
+            }
+        );
+
+        // Usage changes
+        let dirty = cpu
+            .update(&Event {
+                idle: 75,
+                total: 300,
+            })
+            .unwrap();
+        assert_eq!(cpu.format(), config.high.state.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false
+            }
+        );
+
+        // Normal
+        let dirty = cpu
+            .update(&Event {
+                idle: 165,
+                total: 400,
+            })
+            .unwrap();
+        assert_eq!(cpu.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true
+            }
+        );
     }
 }

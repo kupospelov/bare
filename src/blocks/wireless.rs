@@ -95,14 +95,9 @@ impl Group {
                     continue;
                 }
             };
-            if !instance.update(signal.map(dbm_to_quality)) {
-                continue;
+            if let Some(update) = instance.update(signal.map(dbm_to_quality)) {
+                dirty.push(update);
             }
-
-            dirty.push(BlockDirty {
-                index: instance.id,
-                layout: false,
-            });
         }
     }
 }
@@ -154,14 +149,30 @@ impl Wireless {
         }
     }
 
-    fn update(&mut self, quality: Option<u8>) -> bool {
+    fn update(&mut self, quality: Option<u8>) -> Option<BlockDirty> {
         if quality == self.quality {
-            return false;
+            return None;
         }
 
         debug!("Updated wireless quality: {:?}", quality);
+        let low = self.is_low();
         self.quality = quality;
-        true
+        Some(BlockDirty {
+            index: self.id,
+            layout: low != self.is_low(),
+        })
+    }
+
+    fn is_low(&self) -> bool {
+        !matches!(self.quality, Some(q) if q > self.config.low.threshold)
+    }
+
+    fn format(&self) -> &[WirelessFormatItem] {
+        if self.is_low() {
+            &self.config.low.state.format
+        } else {
+            &self.config.format
+        }
     }
 }
 
@@ -171,18 +182,19 @@ impl Block for Wireless {
     }
 
     fn colors(&self) -> &ColorConfig {
-        match self.quality {
-            Some(q) if q > self.config.low.threshold => &self.config.color,
-            _ => &self.config.low.state.color,
+        if self.is_low() {
+            &self.config.low.state.color
+        } else {
+            &self.config.color
         }
     }
 
     fn len(&self) -> usize {
-        self.config.format.len()
+        self.format().len()
     }
 
     fn get(&self, index: usize, rasterizer: &Rasterizer, scale: i32) -> Line {
-        let item = &self.config.format[index];
+        let item = &self.format()[index];
         Line {
             height: item.height(rasterizer, scale),
             text: match item {
@@ -207,5 +219,65 @@ mod tests {
         assert_eq!(dbm_to_quality(-54), 66);
         assert_eq!(dbm_to_quality(-90), 30);
         assert_eq!(dbm_to_quality(-120), 0);
+    }
+
+    #[test]
+    fn state_changes() {
+        let mut config = WirelessConfig::default(&ColorConfig::default());
+        config.format = vec![WirelessFormatItem::Label("normal".into())];
+        config.low.state.format = vec![
+            WirelessFormatItem::Label("low".into()),
+            WirelessFormatItem::Quality,
+        ];
+        let mut wireless = Wireless {
+            id: 3,
+            config: config.clone(),
+            interface: 0,
+            quality: None,
+        };
+
+        // Initialize
+        let dirty = wireless.update(Some(40)).unwrap();
+        assert_eq!(wireless.format(), config.low.state.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false
+            }
+        );
+
+        // Normal
+        let dirty = wireless.update(Some(80)).unwrap();
+        assert_eq!(wireless.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true
+            }
+        );
+
+        // Quality changes
+        let dirty = wireless.update(Some(90)).unwrap();
+        assert_eq!(wireless.format(), config.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: false
+            }
+        );
+
+        // Low
+        let dirty = wireless.update(Some(30)).unwrap();
+        assert_eq!(wireless.format(), config.low.state.format);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true
+            }
+        );
     }
 }
