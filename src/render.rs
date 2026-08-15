@@ -64,7 +64,9 @@ impl fmt::Display for Range {
 
 #[derive(Default)]
 pub struct BlockLayout {
+    // Content height.
     pub content: i32,
+    // Content height with margins.
     pub height: i32,
     pub config: BlockConfig,
 }
@@ -326,8 +328,8 @@ impl Renderer {
         workspaces: &mut Workspaces,
         blocks: &mut Blocks,
     ) {
+        debug!("Output {}: clearing {}", output_id, dirty);
         map.clear(dirty, self.bg_color);
-        debug!("Output {}: clear {}", output_id, dirty);
 
         let font_size = output_layout.font_size;
         let ws_height = workspaces.height();
@@ -350,6 +352,10 @@ impl Renderer {
         let mut y = physical_height as i32;
         for i in 0..blocks.order.len() {
             let layout = &output_layout.blocks[i];
+            if layout.content < 1 {
+                debug!("Output {}: skipping empty block #{}", output_id, i);
+                continue;
+            }
             y -= layout.height;
 
             let range = Range::new(y, y + layout.height);
@@ -571,7 +577,7 @@ mod tests {
             r###"
             [bar]
             fonts = "Sans 10px"
-            blocks = [ "time.1", "time.0" ]
+            blocks = [ "time.1", "time.empty", "time.0" ]
 
             [time.0]
             format = [ "CD" ]
@@ -579,6 +585,10 @@ mod tests {
 
             [time.1]
             format = [ "AB" ]
+
+            [time.empty]
+            format = []
+            margins = [5, 5, 5, 5]
             "###,
         )
         .unwrap();
