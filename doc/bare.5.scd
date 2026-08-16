@@ -57,8 +57,7 @@ following defaults: *height*=26, *borders*=\[1, 1, 1, 1\], *margins*=\[0, 2, 2,
 0\].
 
 In addition to that, workspaces have the *active*, *inactive*, and *urgent*
-states. Each state defines a color section, e.g. *\[workspace.urgent.color\]*.
-See *COLORS* for more information.
+states. Each state defines a color section. See *COLORS* for more information.
 
 # BLOCKS
 
@@ -118,8 +117,8 @@ format that defaults to the regular block format.
 		*\[quality\]*
 			Signal quality.
 
-	The wireless has the *low* state. The state defines a color section, e.g.
-	*\[low.color\]*. See *COLORS* for more information.
+	The wireless has the *down* and *low* states. Each state defines color and
+	format sections. See *COLORS* for more information.
 
 	*low.threshold*=_threshold_
 		Low signal quality threshold.
@@ -262,6 +261,10 @@ The default colors are:
 :[ _inherited_
 :[ _inherited_
 |[ *\[wireless.<name>.low.color\]*
+:[ #dca3a3
+:[ _inherited_
+:[ _inherited_
+|[ *\[wireless.<name>.down.color\]*
 :[ #dca3a3
 :[ _inherited_
 :[ _inherited_

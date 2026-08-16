@@ -131,6 +131,13 @@ pub struct Wireless {
     quality: Option<u8>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum WirelessState {
+    Down,
+    Low,
+    Normal,
+}
+
 impl Wireless {
     pub fn new(id: usize, config: &WirelessConfig) -> Self {
         let interface = match if_nametoindex(config.interface.as_str()) {
@@ -155,23 +162,27 @@ impl Wireless {
         }
 
         debug!("Updated wireless quality: {:?}", quality);
-        let low = self.is_low();
+        let state = self.state();
         self.quality = quality;
         Some(BlockDirty {
             index: self.id,
-            layout: low != self.is_low(),
+            layout: state != self.state(),
         })
     }
 
-    fn is_low(&self) -> bool {
-        !matches!(self.quality, Some(q) if q > self.config.low.threshold)
+    fn state(&self) -> WirelessState {
+        match self.quality {
+            None => WirelessState::Down,
+            Some(q) if q <= self.config.low.threshold => WirelessState::Low,
+            Some(_) => WirelessState::Normal,
+        }
     }
 
     fn format(&self) -> &[WirelessFormatItem] {
-        if self.is_low() {
-            &self.config.low.state.format
-        } else {
-            &self.config.format
+        match self.state() {
+            WirelessState::Down => &self.config.down.format,
+            WirelessState::Low => &self.config.low.state.format,
+            WirelessState::Normal => &self.config.format,
         }
     }
 }
@@ -182,10 +193,10 @@ impl Block for Wireless {
     }
 
     fn colors(&self) -> &ColorConfig {
-        if self.is_low() {
-            &self.config.low.state.color
-        } else {
-            &self.config.color
+        match self.state() {
+            WirelessState::Down => &self.config.down.color,
+            WirelessState::Low => &self.config.low.state.color,
+            WirelessState::Normal => &self.config.color,
         }
     }
 
@@ -225,6 +236,7 @@ mod tests {
     fn state_changes() {
         let mut config = WirelessConfig::default(&ColorConfig::default());
         config.format = vec![WirelessFormatItem::Label("normal".into())];
+        config.down.format = vec![WirelessFormatItem::Label("down".into())];
         config.low.state.format = vec![
             WirelessFormatItem::Label("low".into()),
             WirelessFormatItem::Quality,
@@ -236,20 +248,26 @@ mod tests {
             quality: None,
         };
 
+        // Down
+        assert_eq!(wireless.format(), config.down.format);
+        assert_eq!(wireless.colors(), &config.down.color);
+
         // Initialize
         let dirty = wireless.update(Some(40)).unwrap();
         assert_eq!(wireless.format(), config.low.state.format);
+        assert_eq!(wireless.colors(), &config.low.state.color);
         assert_eq!(
             dirty,
             BlockDirty {
                 index: 3,
-                layout: false
+                layout: true
             }
         );
 
         // Normal
         let dirty = wireless.update(Some(80)).unwrap();
         assert_eq!(wireless.format(), config.format);
+        assert_eq!(wireless.colors(), &config.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -266,6 +284,18 @@ mod tests {
             BlockDirty {
                 index: 3,
                 layout: false
+            }
+        );
+
+        // Down
+        let dirty = wireless.update(None).unwrap();
+        assert_eq!(wireless.format(), config.down.format);
+        assert_eq!(wireless.colors(), &config.down.color);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true
             }
         );
 

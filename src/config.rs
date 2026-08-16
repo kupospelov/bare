@@ -307,6 +307,7 @@ pub struct WirelessConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<WirelessFormatItem>,
+    pub down: StateConfig<WirelessFormatItem>,
     pub low: ThresholdStateConfig<WirelessFormatItem>,
 }
 
@@ -322,6 +323,13 @@ impl WirelessConfig {
             block: BlockConfig::default(),
             color: color.clone(),
             format: format.clone(),
+            down: StateConfig {
+                color: ColorConfig {
+                    text: BAD,
+                    ..*color
+                },
+                format: format.clone(),
+            },
             low: ThresholdStateConfig {
                 state: StateConfig {
                     color: ColorConfig {
@@ -746,10 +754,12 @@ impl Visit for WirelessConfig {
         self.block.visit(&mut toml);
 
         toml.get("format").set(&mut self.format);
+        self.down.format.clone_from(&self.format);
         self.low.state.format.clone_from(&self.format);
 
         toml.get("interface").set(&mut self.interface);
         toml.get("color").visit(&mut self.color);
+        toml.get("down").visit(&mut self.down);
         toml.get("low").visit(&mut self.low);
         toml.empty();
     }
@@ -1099,8 +1109,12 @@ mod tests {
                 WirelessFormatItem::Quality,
             ]
         );
+        assert_eq!(w.down.format, w.format);
         assert_eq!(w.low.state.format, w.format);
 
+        assert_eq!(w.down.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(w.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.down.color.border, Color::rgb(0, 0, 0));
         assert_eq!(w.low.threshold, 50);
         assert_eq!(w.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
         assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1119,6 +1133,10 @@ mod tests {
             threshold = 40
             color.text = "#123456"
 
+            [wireless.0.down]
+            format = ["OFF"]
+            color.text = "#abcdef"
+
             [wireless.0.color]
             background = "#aabbcc"
             "###,
@@ -1133,6 +1151,10 @@ mod tests {
         assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(w.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(w.down.format, vec![WirelessFormatItem::Label("OFF".into())]);
+        assert_eq!(w.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
+        assert_eq!(w.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.down.color.border, Color::rgb(0, 0, 0));
         assert_eq!(w.low.threshold, 40);
         assert_eq!(w.low.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(w.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1346,8 +1368,14 @@ mod tests {
             [wireless.0.low]
             threshold = 40
 
+            [wireless.1.down]
+            format = []
+
             [wireless.1.low]
             format = []
+
+            [wireless.2.down]
+            format = ["down2"]
 
             [wireless.2.low]
             format = ["low2", "[quality]"]
@@ -1357,14 +1385,20 @@ mod tests {
 
         // Inherited
         let w0 = config.wireless.get("0").unwrap();
+        assert_eq!(w0.down.format, w0.format);
         assert_eq!(w0.low.state.format, w0.format);
 
         // Empty override
         let w1 = config.wireless.get("1").unwrap();
+        assert_eq!(w1.down.format, vec![]);
         assert_eq!(w1.low.state.format, vec![]);
 
         // Override
         let w2 = config.wireless.get("2").unwrap();
+        assert_eq!(
+            w2.down.format,
+            vec![WirelessFormatItem::Label("down2".into())]
+        );
         assert_eq!(
             w2.low.state.format,
             vec![
