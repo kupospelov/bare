@@ -7,6 +7,7 @@ use crate::{debug, error, fail};
 use nix::sys::socket::{
     self, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
+use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, OwnedFd};
 
 pub struct Group {
@@ -28,11 +29,11 @@ impl Group {
 
     pub fn update(&mut self, dirty: &mut Vec<BlockDirty>) {
         for instance in &mut self.instances {
-            if instance.config.poll
-                && let Some(event) = instance.read_event_from_path(false)
-                && let Some(update) = instance.update_state(&event)
-            {
-                dirty.push(update);
+            if instance.config.poll {
+                let event = instance.read_event_from_path();
+                if let Some(update) = instance.update_state(&event) {
+                    dirty.push(update);
+                }
             }
         }
     }
@@ -85,7 +86,6 @@ impl Group {
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 enum BatteryState {
     // Event states.
-    #[default]
     Unknown,
     Discharging,
     Charging,
@@ -93,6 +93,8 @@ enum BatteryState {
     Idle,
 
     // Calculated states.
+    #[default]
+    Down,
     Low,
 }
 
@@ -103,10 +105,7 @@ impl BatteryState {
             "Charging" => Self::Charging,
             "Full" => Self::Full,
             "Not charging" => Self::Idle,
-            s => {
-                debug!("Unknown battery status: {}", s);
-                Self::Unknown
-            }
+            _ => Self::Unknown,
         }
     }
 }
@@ -121,21 +120,27 @@ pub struct Battery {
 
 impl Battery {
     pub fn new(id: usize, config: &BatteryConfig) -> Self {
+        let Some(name) = config
+            .path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+        else {
+            fail!(
+                "Failed to get battery name from path: {}",
+                config.path.display()
+            );
+        };
+
         let mut battery = Self {
             id,
-            name: String::new(),
+            name: name.to_owned(),
             state: BatteryState::default(),
             capacity: 0,
             config: config.clone(),
         };
-        if let Some(event) = battery.read_event_from_path(true) {
-            let Some(name) = event.name.as_ref() else {
-                fail!("Failed to read battery name");
-            };
-
-            battery.name = name.clone();
-            battery.update_state(&event);
-        }
+        let event = battery.read_event_from_path();
+        battery.update_state(&event);
         battery
     }
 
@@ -175,12 +180,20 @@ impl Battery {
         true
     }
 
-    fn read_event_from_path(&mut self, read_name: bool) -> Option<Event> {
+    fn read_event_from_path(&self) -> Event {
         match std::fs::read(&self.config.path) {
-            Ok(bytes) => Some(parse_event(bytes.split(|&b| b == b'\n'), read_name)),
+            Ok(bytes) => parse_event(bytes.split(|&b| b == b'\n'), false),
             Err(e) => {
-                error!("No event read from {}: {}", self.config.path.display(), e);
-                None
+                if e.kind() != ErrorKind::NotFound {
+                    // Expected for the down state.
+                    error!("No event read from {}: {}", self.config.path.display(), e);
+                }
+                Event {
+                    name: None,
+                    status: None,
+                    capacity: None,
+                    gone: true,
+                }
             }
         }
     }
@@ -201,13 +214,13 @@ impl Battery {
         let mut dirty = false;
         if let Some(c) = &event.capacity {
             dirty |= self.set_capacity(c.clone());
-        } else {
-            debug!("Battery {}: no reported capacity", self.name);
         }
-        if let Some(status) = &event.status {
-            dirty |= self.set_state(BatteryState::from_status(status));
+        if event.gone {
+            dirty |= self.set_state(BatteryState::Down)
         } else {
-            debug!("Battery {}: no reported status", self.name);
+            if let Some(status) = &event.status {
+                dirty |= self.set_state(BatteryState::from_status(status));
+            }
         }
         dirty.then_some(BlockDirty {
             index: self.id,
@@ -217,6 +230,7 @@ impl Battery {
 
     fn format(&self) -> &[BatteryFormatItem] {
         match self.state {
+            BatteryState::Down => &self.config.down.format,
             BatteryState::Discharging => &self.config.format,
             BatteryState::Charging => &self.config.charging.format,
             BatteryState::Full => &self.config.full.format,
@@ -229,6 +243,7 @@ impl Battery {
 
 struct Event {
     name: Option<String>,
+    gone: bool,
     status: Option<String>,
     capacity: Option<String>,
 }
@@ -237,6 +252,7 @@ fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>, read_name: bool) -> E
     let mut name = None;
     let mut status = None;
     let mut capacity = None;
+    let mut gone = false;
     for f in fields {
         if read_name && let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
             name = std::str::from_utf8(v).ok().map(str::to_owned);
@@ -244,12 +260,15 @@ fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>, read_name: bool) -> E
             status = std::str::from_utf8(v).ok().map(str::to_owned);
         } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_CAPACITY=") {
             capacity = std::str::from_utf8(v).ok().map(str::to_owned);
+        } else if f == b"ACTION=remove" || f == b"POWER_SUPPLY_PRESENT=0" {
+            gone = true;
         }
     }
     Event {
         name,
         status,
         capacity,
+        gone,
     }
 }
 
@@ -271,6 +290,7 @@ impl Block for Battery {
 
     fn colors(&self) -> &ColorConfig {
         match self.state {
+            BatteryState::Down => &self.config.down.color,
             BatteryState::Discharging => &self.config.color,
             BatteryState::Charging => &self.config.charging.color,
             BatteryState::Full => &self.config.full.color,
@@ -303,6 +323,7 @@ mod tests {
     fn event(capacity: u8, status: &str) -> Event {
         Event {
             name: None,
+            gone: false,
             status: Some(status.into()),
             capacity: Some(capacity.to_string()),
         }
@@ -312,6 +333,7 @@ mod tests {
     fn state_changes() {
         let mut config = BatteryConfig::default(&ColorConfig::default());
         config.format = vec![BatteryFormatItem::Label("discharging".into())];
+        config.down.format = vec![BatteryFormatItem::Label("down".into())];
         config.charging.format = vec![BatteryFormatItem::Label("charging".into())];
         config.full.format = vec![BatteryFormatItem::Label("full".into())];
         config.idle.format = vec![BatteryFormatItem::Label("idle".into())];
@@ -322,14 +344,14 @@ mod tests {
         let mut battery = Battery {
             id: 3,
             name: "BAT0".into(),
-            state: BatteryState::Unknown,
+            state: BatteryState::Down,
             capacity: 0,
             config,
         };
-        assert_eq!(
-            battery.format(),
-            [BatteryFormatItem::Label("unknown".into())]
-        );
+
+        // Down
+        assert_eq!(battery.format(), [BatteryFormatItem::Label("down".into())]);
+        assert_eq!(battery.colors(), &battery.config.down.color);
 
         // Discharging
         let dirty = battery.update_state(&event(50, "Discharging")).unwrap();
@@ -337,23 +359,12 @@ mod tests {
             battery.format(),
             [BatteryFormatItem::Label("discharging".into())]
         );
-        assert_eq!(
-            dirty,
-            BlockDirty {
-                index: 3,
-                layout: true,
-            }
-        );
+        assert_eq!(battery.colors(), &battery.config.color);
+        assert!(dirty.layout);
 
         // Capacity changes
         let dirty = battery.update_state(&event(40, "Discharging")).unwrap();
-        assert_eq!(
-            dirty,
-            BlockDirty {
-                index: 3,
-                layout: false,
-            }
-        );
+        assert!(!dirty.layout);
 
         // Charging
         let dirty = battery.update_state(&event(40, "Charging")).unwrap();
@@ -361,21 +372,25 @@ mod tests {
             battery.format(),
             [BatteryFormatItem::Label("charging".into())]
         );
+        assert_eq!(battery.colors(), &battery.config.charging.color);
         assert!(dirty.layout);
 
         // Low
         let dirty = battery.update_state(&event(10, "Discharging")).unwrap();
         assert_eq!(battery.format(), [BatteryFormatItem::Label("low".into())]);
+        assert_eq!(battery.colors(), &battery.config.low.state.color);
         assert!(dirty.layout);
 
         // Full
         let dirty = battery.update_state(&event(100, "Full")).unwrap();
         assert_eq!(battery.format(), [BatteryFormatItem::Label("full".into())]);
+        assert_eq!(battery.colors(), &battery.config.full.color);
         assert!(dirty.layout);
 
         // Idle
         let dirty = battery.update_state(&event(100, "Not charging")).unwrap();
         assert_eq!(battery.format(), [BatteryFormatItem::Label("idle".into())]);
+        assert_eq!(battery.colors(), &battery.config.idle.color);
         assert!(dirty.layout);
 
         // Unknown
@@ -384,6 +399,20 @@ mod tests {
             battery.format(),
             [BatteryFormatItem::Label("unknown".into())]
         );
+        assert_eq!(battery.colors(), &battery.config.unknown.color);
+        assert!(dirty.layout);
+
+        // Down
+        let dirty = battery
+            .update_state(&Event {
+                name: None,
+                gone: true,
+                status: None,
+                capacity: None,
+            })
+            .unwrap();
+        assert_eq!(battery.format(), [BatteryFormatItem::Label("down".into())]);
+        assert_eq!(battery.colors(), &battery.config.down.color);
         assert!(dirty.layout);
     }
 }

@@ -210,6 +210,7 @@ pub struct BatteryConfig {
     pub format: Vec<BatteryFormatItem>,
 
     // States.
+    pub down: StateConfig<BatteryFormatItem>,
     pub charging: StateConfig<BatteryFormatItem>,
     pub full: StateConfig<BatteryFormatItem>,
     pub idle: StateConfig<BatteryFormatItem>,
@@ -242,6 +243,13 @@ impl BatteryConfig {
             block: BlockConfig::default(),
             color: color.clone(),
             format: format.clone(),
+            down: StateConfig {
+                color: ColorConfig {
+                    text: BAD,
+                    ..*color
+                },
+                format: format.clone(),
+            },
             charging: StateConfig {
                 color: ColorConfig {
                     text: GOOD,
@@ -731,6 +739,7 @@ impl Visit for BatteryConfig {
         self.block.visit(&mut toml);
 
         toml.get("format").set(&mut self.format);
+        self.down.format.clone_from(&self.format);
         self.charging.format.clone_from(&self.format);
         self.full.format.clone_from(&self.format);
         self.idle.format.clone_from(&self.format);
@@ -740,6 +749,7 @@ impl Visit for BatteryConfig {
         toml.get("path").set(&mut self.path);
         toml.get("poll").set(&mut self.poll);
         toml.get("color").visit(&mut self.color);
+        toml.get("down").visit(&mut self.down);
         toml.get("charging").visit(&mut self.charging);
         toml.get("full").visit(&mut self.full);
         toml.get("idle").visit(&mut self.idle);
@@ -1040,12 +1050,16 @@ mod tests {
                 BatteryFormatItem::Capacity,
             ]
         );
+        assert_eq!(b.down.format, b.format);
         assert_eq!(b.charging.format, b.format);
         assert_eq!(b.full.format, b.format);
         assert_eq!(b.idle.format, b.format);
         assert_eq!(b.unknown.format, b.format);
         assert_eq!(b.low.state.format, b.format);
 
+        assert_eq!(b.down.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(b.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.down.color.border, Color::rgb(0, 0, 0));
         assert_eq!(b.low.threshold, 20);
         assert_eq!(b.low.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
         assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1064,6 +1078,10 @@ mod tests {
             threshold = 15
             color.text = "#123456"
 
+            [battery.0.down]
+            format = ["OFF"]
+            color.text = "#abcdef"
+
             [battery.0.color]
             background = "#aabbcc"
             "###,
@@ -1078,6 +1096,10 @@ mod tests {
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(b.down.format, vec![BatteryFormatItem::Label("OFF".into())]);
+        assert_eq!(b.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
+        assert_eq!(b.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.down.color.border, Color::rgb(0, 0, 0));
         assert_eq!(b.low.threshold, 15);
         assert_eq!(b.low.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(b.low.state.color.background, Color::rgb(0, 0, 0));
@@ -1304,8 +1326,14 @@ mod tests {
             [battery.0.low]
             threshold = 30
 
+            [battery.1.down]
+            format = []
+
             [battery.1.charging]
             format = []
+
+            [battery.2.down]
+            format = ["down2", "[capacity]"]
 
             [battery.2.charging]
             format = ["charging2", "[capacity]"]
@@ -1327,6 +1355,7 @@ mod tests {
 
         // Inherited
         let b0 = config.battery.get("0").unwrap();
+        assert_eq!(b0.down.format, b0.format);
         assert_eq!(b0.charging.format, b0.format);
         assert_eq!(b0.full.format, b0.format);
         assert_eq!(b0.idle.format, b0.format);
@@ -1335,6 +1364,7 @@ mod tests {
 
         // Empty override
         let b1 = config.battery.get("1").unwrap();
+        assert_eq!(b1.down.format, vec![]);
         assert_eq!(b1.charging.format, vec![]);
 
         // Overrides
@@ -1345,6 +1375,7 @@ mod tests {
                 BatteryFormatItem::Capacity,
             ]
         };
+        assert_eq!(b2.down.format, format("down2"));
         assert_eq!(b2.charging.format, format("charging2"));
         assert_eq!(b2.full.format, format("full2"));
         assert_eq!(b2.idle.format, format("idle2"));
