@@ -33,3 +33,5 @@ Dependencies:
 - scdoc (optional, for man pages)
 
 Run `make`.
+
+Builds have AVX2 enabled for x86-64 by default.
