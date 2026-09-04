@@ -460,9 +460,7 @@ mod tests {
     /// - The difference between top and bottom padding must not exceed `vdiff` pixels.
     fn assert_centered(r: &mut Renderer, s: &str, ft_size: u32, hdiff: i32, vdiff: i32) {
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
-        for px in buf.chunks_exact_mut(4) {
-            px.copy_from_slice(&[0, 0, 0, 255]);
-        }
+        buf.as_chunks_mut::<4>().0.fill([0, 0, 0, 255]);
         let region = Region {
             x: 0,
             y: 0,

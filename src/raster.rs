@@ -3,10 +3,32 @@ use crate::font;
 use crate::{info, warning};
 use std::collections::HashMap;
 
-macro_rules! blend {
-    ($ft_color:expr, $bg_color:expr, $alpha:expr) => {
-        ($ft_color as u32 * $alpha + $bg_color as u32 * (255 - $alpha)) / 255
-    };
+#[inline(always)]
+fn blend_channel(foreground: u8, background: u8, alpha: u8) -> u8 {
+    let fg = foreground as i32;
+    let bg = background as i32;
+    let alpha = alpha as i32;
+    let value = bg * 255 + (fg - bg) * alpha;
+
+    // Division by 255 for 16-bit integers.
+    ((value * 257 + 257) >> 16) as u8
+}
+
+#[inline(always)]
+fn blend_pixel(foreground: Color, background: Color, alpha: u8) -> [u8; 4] {
+    [
+        blend_channel(foreground.b, background.b, alpha),
+        blend_channel(foreground.g, background.g, alpha),
+        blend_channel(foreground.r, background.r, alpha),
+        255,
+    ]
+}
+
+fn blend_pixels(pixels: &mut [u8], bitmap: &[u8], foreground: Color, background: Color) {
+    let (pixels, _) = pixels.as_chunks_mut::<4>();
+    for (pixel, &alpha) in pixels.iter_mut().zip(bitmap) {
+        *pixel = blend_pixel(foreground, background, alpha);
+    }
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
@@ -78,14 +100,7 @@ impl Rasterizer {
             };
 
             let mut pixels = vec![0u8; metrics.width * metrics.height * 4];
-            let (chunks, _) = pixels.as_chunks_mut::<4>();
-            for (chunk, alpha) in chunks.iter_mut().zip(bitmap) {
-                let alpha = alpha as u32;
-                let b = blend!(ft_color.b, bg_color.b, alpha);
-                let g = blend!(ft_color.g, bg_color.g, alpha);
-                let r = blend!(ft_color.r, bg_color.r, alpha);
-                *chunk = [b as u8, g as u8, r as u8, 255];
-            }
+            blend_pixels(&mut pixels, &bitmap, ft_color, bg_color);
             Bitmap {
                 width: metrics.width,
                 height: metrics.height,
@@ -119,5 +134,30 @@ impl Rasterizer {
         } else {
             max_size * scale as u32
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::util::bench;
+    use std::hint::black_box;
+
+    #[test]
+    #[ignore = "run in release mode with --ignored --nocapture"]
+    fn bench_methods() {
+        let foreground = Color::rgb(37, 149, 213);
+        let background = Color::rgb(219, 83, 11);
+        let bitmap: Vec<u8> = (0..32 * 32).map(|i| i as u8).collect();
+        let mut pixels = vec![0; bitmap.len() * 4];
+        bench("blend_pixels", || {
+            blend_pixels(
+                black_box(&mut pixels),
+                black_box(&bitmap),
+                black_box(foreground),
+                black_box(background),
+            );
+            black_box(&pixels);
+        });
     }
 }

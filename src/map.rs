@@ -77,8 +77,8 @@ impl<'a> Map for Mem<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::util::bench;
     use std::hint::black_box;
-    use std::time::Instant;
 
     fn bitmap(width: usize, height: usize) -> Bitmap {
         let pixels = (0..width * height)
@@ -165,16 +165,6 @@ mod tests {
     #[test]
     #[ignore = "run in release mode with --ignored --nocapture"]
     fn bench_methods() {
-        fn bench(name: &str, mut operation: impl FnMut()) {
-            const N: u32 = 100_000;
-            let start = Instant::now();
-            for _ in 0..N {
-                operation();
-            }
-            let ns = start.elapsed().as_nanos() as f64 / N as f64;
-            eprintln!("{name}: {ns:.2}ns");
-        }
-
         let mut data = vec![0; 32 * 1920 * 4];
         let mut map = Mem::new(&mut data, 1920);
         let region = Region {
