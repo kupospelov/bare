@@ -186,7 +186,11 @@ pub trait Block {
         let block = self.block().scaled(scale);
         render::BlockLayout {
             content,
-            height: block.height(content),
+            height: if content > 0 {
+                block.height(content)
+            } else {
+                0
+            },
             config: block,
         }
     }

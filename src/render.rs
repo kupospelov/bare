@@ -585,8 +585,11 @@ mod tests {
             format = [ "AB" ]
 
             [time.empty]
+            height = 40
             format = []
             margins = [5, 5, 5, 5]
+            borders = [2, 2, 2, 2]
+            color.background = "#00ff00"
             "###,
         )
         .unwrap();
