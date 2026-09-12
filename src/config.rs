@@ -20,6 +20,7 @@ pub struct Config {
     pub battery: HashMap<String, BatteryConfig>,
     pub time: HashMap<String, TimeConfig>,
     pub cpu: HashMap<String, CpuConfig>,
+    pub file: HashMap<String, FileConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -493,6 +494,40 @@ impl FormatItem for CpuFormatItem {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileConfig {
+    pub path: PathBuf,
+    pub block: BlockConfig,
+    pub color: ColorConfig,
+    pub format: Vec<String>,
+    pub down: StateConfig<String>,
+}
+
+impl FileConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec!["PTH".into()];
+        Self {
+            path: PathBuf::new(),
+            block: BlockConfig::default(),
+            color: color.clone(),
+            format: format.clone(),
+            down: StateConfig {
+                color: ColorConfig {
+                    text: BAD,
+                    ..*color
+                },
+                format,
+            },
+        }
+    }
+}
+
+impl FormatItem for String {
+    fn label(&self) -> Option<&str> {
+        Some(self)
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -503,6 +538,7 @@ impl Default for Config {
             battery: HashMap::new(),
             time: HashMap::new(),
             cpu: HashMap::new(),
+            file: HashMap::new(),
         }
     }
 }
@@ -803,6 +839,23 @@ impl Visit for CpuConfig {
     }
 }
 
+impl Visit for FileConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+
+        toml.get("path").set(&mut self.path);
+        assert!(
+            !self.path.as_os_str().is_empty(),
+            "file.path must be non-empty"
+        );
+        toml.get("format").set(&mut self.format);
+        self.down.format.clone_from(&self.format);
+        toml.get("color").visit(&mut self.color);
+        toml.get("down").visit(&mut self.down);
+        toml.empty();
+    }
+}
+
 impl Visit for Config {
     fn visit(&mut self, mut toml: Toml) {
         toml.get("bar").set(&mut self.bar);
@@ -824,6 +877,7 @@ impl Visit for Config {
             BatteryConfig::default(&self.bar.color),
         );
         toml.merge("time", &mut self.time, TimeConfig::default(&self.bar.color));
+        toml.merge("file", &mut self.file, FileConfig::default(&self.bar.color));
         toml.empty();
     }
 }
@@ -1478,6 +1532,77 @@ mod tests {
             c2.high.state.format,
             vec![CpuFormatItem::Label("high2".into()), CpuFormatItem::Usage,]
         );
+    }
+
+    #[test]
+    fn file_defaults() {
+        let config: Config = toml::from_str(
+            r###"
+            [file.0]
+            path = "/tmp/flag"
+            "###,
+        )
+        .unwrap();
+
+        let f = config.file.get("0").unwrap();
+        assert_eq!(f.path, PathBuf::from("/tmp/flag"));
+        assert_eq!(f.block.height, 0);
+        assert_eq!(f.block.borders, [0, 0, 0, 0]);
+        assert_eq!(f.block.margins, [0, 0, 0, 0]);
+        assert_eq!(f.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(f.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(f.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(f.format, ["PTH"]);
+        assert_eq!(f.down.format, f.format);
+        assert_eq!(f.down.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(f.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(f.down.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn file_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [file.0]
+            path = "relative/path"
+            margins = [1, 2, 3, 4]
+            format = ["[literal]", "ON"]
+
+            [file.0.down]
+            format = ["OFF"]
+            color.text = "#abcdef"
+
+            [file.0.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        let f = config.file.get("0").unwrap();
+        assert_eq!(f.path, PathBuf::from("relative/path"));
+        assert_eq!(f.block.height, 0);
+        assert_eq!(f.block.borders, [0, 0, 0, 0]);
+        assert_eq!(f.block.margins, [1, 2, 3, 4]);
+        assert_eq!(f.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(f.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(f.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(f.format, ["[literal]", "ON"]);
+        assert_eq!(f.down.format, ["OFF"]);
+        assert_eq!(f.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
+        assert_eq!(f.down.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(f.down.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "file.path must be non-empty")]
+    fn file_missing_path_rejected() {
+        toml::from_str::<Config>("[file.0]").unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "file.path must be non-empty")]
+    fn file_empty_path_rejected() {
+        toml::from_str::<Config>("[file.0]\npath = ''").unwrap();
     }
 
     #[test]

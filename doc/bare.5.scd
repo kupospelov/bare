@@ -62,8 +62,8 @@ states. Each state defines a color section. See *COLORS* for more information.
 # BLOCKS
 
 Blocks are configured as named instances of a block type. The available types
-are *cpu*, *wireless*, *volume*, *battery*, and *time*. Instances are defined in
-*\[type.<name>\]* sections and referenced in the *\[bar.blocks\]*.
+are *cpu*, *wireless*, *volume*, *battery*, *time*, and *file*. Instances are
+defined in *\[type.<name>\]* sections and referenced in the *\[bar.blocks\]*.
 
 Each block section accepts options described in *BOX MODEL*, a *color* section
 described in *COLORS*, and a *format* option specific to the block type.
@@ -206,6 +206,20 @@ format that defaults to the regular block format.
 		*\[month\]*
 			Current month, zero-padded to two digits.
 
+## File
+
+	Display whether a file exists.
+
+	*path*=_path_
+		Path to the file.
+
+	*format*=_\[label, ...\]_
+
+		Default: \["PTH"\]
+
+	The file has the *down* state. The state defines color and format sections.
+	See *COLORS* for more information.
+
 # BOX MODEL
 
 The following options control the size and spacing of a block. They are shared
@@ -257,6 +271,10 @@ The default colors are:
 :[ #77282d
 :[ #994c4c
 |[ *\[cpu.<name>.high.color\]*
+:[ #dca3a3
+:[ _inherited_
+:[ _inherited_
+|[ *\[file.<name>.down.color\]*
 :[ #dca3a3
 :[ _inherited_
 :[ _inherited_

@@ -1,5 +1,6 @@
 pub mod battery;
 pub mod cpu;
+pub mod file;
 pub mod time;
 pub mod volume;
 pub mod wireless;
@@ -60,6 +61,7 @@ pub enum Instance {
     Volume(usize),
     Wireless(usize),
     Cpu(usize),
+    File(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -75,6 +77,7 @@ pub struct Blocks {
     pub volume: volume::Group,
     pub wireless: wireless::Group,
     pub cpu: cpu::Group,
+    pub file: file::Group,
 }
 
 impl Blocks {
@@ -86,6 +89,7 @@ impl Blocks {
             volume: volume::Group::new(),
             wireless: wireless::Group::new(),
             cpu: cpu::Group::new(),
+            file: file::Group::new(),
         };
 
         for (i, entry) in config.bar.blocks.iter().rev().enumerate() {
@@ -136,6 +140,15 @@ impl Blocks {
                         .unwrap_or_else(|| CpuConfig::default(&config.bar.color));
                     blocks.order.push(blocks.cpu.add(i, &cfg));
                 }
+                "file" => {
+                    let cfg = config.file.get(name).unwrap_or_else(|| {
+                        panic!(
+                            "Missing configuration for '{}': file.path is required",
+                            entry
+                        )
+                    });
+                    blocks.order.push(blocks.file.add(i, cfg));
+                }
                 _ => panic!(
                     "Unknown block type '{}' in bar.blocks entry '{}'",
                     kind, entry
@@ -153,6 +166,7 @@ impl Blocks {
             Instance::Volume(j) => &self.volume.instances[j],
             Instance::Wireless(j) => &self.wireless.instances[j],
             Instance::Cpu(j) => &self.cpu.instances[j],
+            Instance::File(j) => &self.file.instances[j],
         }
     }
 
@@ -212,21 +226,27 @@ pub trait Block {
 mod tests {
     use super::*;
 
-    fn config_with_blocks(entries: &[&str]) -> Config {
+    fn block(block: &str) -> Config {
         let mut config = Config::default();
-        config.bar.blocks = entries.iter().map(|s| (*s).to_string()).collect();
+        config.bar.blocks = vec![block.to_string()];
         config
     }
 
     #[test]
     #[should_panic(expected = "Invalid bar.blocks entry 'noname'")]
-    fn missing_separator_panics() {
-        Blocks::new(&config_with_blocks(&["noname"]));
+    fn missing_block_separator_panics() {
+        Blocks::new(&block("noname"));
     }
 
     #[test]
     #[should_panic(expected = "Unknown block type 'unknown' in bar.blocks entry 'unknown.default'")]
-    fn unknown_kind_panics() {
-        Blocks::new(&config_with_blocks(&["unknown.default"]));
+    fn unknown_block_type_panics() {
+        Blocks::new(&block("unknown.default"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Missing configuration for 'file.missing': file.path is required")]
+    fn unconfigured_file_path_panics() {
+        Blocks::new(&block("file.missing"));
     }
 }

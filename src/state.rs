@@ -220,6 +220,7 @@ impl State {
         self.blocks.cpu.update(&mut dirty);
         self.blocks.wireless.update(&mut dirty);
         self.blocks.battery.update(&mut dirty);
+        self.blocks.file.update(&mut dirty);
         for d in dirty {
             self.mark_all_outputs_block_dirty(d);
         }
