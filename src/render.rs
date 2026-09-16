@@ -3,8 +3,7 @@ use crate::blocks::{Block, Blocks};
 use crate::color::Color;
 use crate::config::{BlockConfig, Config};
 use crate::font;
-use crate::map::Map;
-use crate::map::Mem;
+use crate::map::{Flip, Map, Mem};
 use crate::raster::Rasterizer;
 use crate::wayland::buffer::Buffer;
 use crate::wayland::output::Output;
@@ -20,6 +19,17 @@ pub struct Region {
     pub y: i32,
     pub w: u32,
     pub h: u32,
+}
+
+impl Region {
+    pub fn inset(self, [top, right, bottom, left]: [i32; 4]) -> Self {
+        Self {
+            x: self.x + left,
+            y: self.y + top,
+            w: (self.w as i32 - left - right).max(0) as u32,
+            h: (self.h as i32 - top - bottom).max(0) as u32,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -96,34 +106,36 @@ impl Renderer {
     }
 
     pub fn draw_block(
-        &self,
+        &mut self,
         map: &mut dyn Map,
         region: Region,
         config: &BlockConfig,
         background: Color,
         border: Color,
     ) -> Region {
-        let outer = Region {
-            x: region.x + config.margins[3],
-            y: region.y + config.margins[0],
-            w: (region.w as i32 - config.margins[3] - config.margins[1]).max(0) as u32,
-            h: (region.h as i32 - config.margins[0] - config.margins[2]).max(0) as u32,
-        };
-        let inner = Region {
-            x: outer.x + config.borders[3],
-            y: outer.y + config.borders[0],
-            w: (outer.w as i32 - config.borders[3] - config.borders[1]).max(0) as u32,
-            h: (outer.h as i32 - config.borders[0] - config.borders[2]).max(0) as u32,
-        };
-        if outer.w > 0 && outer.h > 0 {
-            self.draw_borders(map, outer, config.borders, border);
+        let outer = region.inset(config.margins);
+        let inner = outer.inset(config.borders);
+        if inner.w == 0 || inner.h == 0 {
+            return inner;
         }
-        if inner.w > 0 && inner.h > 0 && self.bg_color != background {
+
+        self.draw_borders(map, outer, config.borders, border);
+        if self.bg_color != background {
             map.fill(inner, background);
         }
+        self.draw_corners(
+            map,
+            outer,
+            config.corners,
+            config.borders,
+            background,
+            border,
+        );
+
         inner
     }
 
+    #[inline(always)]
     fn draw_borders(&self, map: &mut dyn Map, region: Region, borders: [i32; 4], color: Color) {
         if borders[0] > 0 {
             map.fill(
@@ -171,6 +183,90 @@ impl Renderer {
         }
     }
 
+    #[inline(always)]
+    fn draw_corners(
+        &mut self,
+        map: &mut dyn Map,
+        region: Region,
+        corners: [u32; 4],
+        borders: [i32; 4],
+        fg_color: Color,
+        br_color: Color,
+    ) {
+        if corners[0] > 0 {
+            let r = corners[0].min(region.w / 2).min(region.h / 2);
+            let bitmap = self.rasterizer.corner(
+                r,
+                fg_color,
+                self.bg_color,
+                br_color,
+                borders[0] as u32,
+                borders[3] as u32,
+            );
+            map.copy(
+                region,
+                bitmap,
+                region.y,
+                region.x,
+                Flip { h: false, v: false },
+            );
+        }
+        if corners[1] > 0 {
+            let r = corners[1].min(region.w / 2).min(region.h / 2);
+            let bitmap = self.rasterizer.corner(
+                r,
+                fg_color,
+                self.bg_color,
+                br_color,
+                borders[0] as u32,
+                borders[1] as u32,
+            );
+            map.copy(
+                region,
+                bitmap,
+                region.y,
+                region.x + (region.w - r) as i32,
+                Flip { h: true, v: false },
+            );
+        }
+        if corners[2] > 0 {
+            let r = corners[2].min(region.w / 2).min(region.h / 2);
+            let bitmap = self.rasterizer.corner(
+                r,
+                fg_color,
+                self.bg_color,
+                br_color,
+                borders[2] as u32,
+                borders[1] as u32,
+            );
+            map.copy(
+                region,
+                bitmap,
+                region.y + (region.h - r) as i32,
+                region.x + (region.w - r) as i32,
+                Flip { h: true, v: true },
+            );
+        }
+        if corners[3] > 0 {
+            let r = corners[3].min(region.w / 2).min(region.h / 2);
+            let bitmap = self.rasterizer.corner(
+                r,
+                fg_color,
+                self.bg_color,
+                br_color,
+                borders[2] as u32,
+                borders[3] as u32,
+            );
+            map.copy(
+                region,
+                bitmap,
+                region.y + (region.h - r) as i32,
+                region.x,
+                Flip { h: false, v: true },
+            );
+        }
+    }
+
     pub fn render_text(
         &mut self,
         map: &mut dyn Map,
@@ -204,6 +300,7 @@ impl Renderer {
                 bitmap,
                 baseline - bitmap.ymin - bitmap.height as i32,
                 x_start + bitmap.xmin,
+                Flip { h: false, v: false },
             );
             x_start += bitmap.advance_width as i32;
         }
@@ -415,7 +512,7 @@ mod tests {
             self.push(Call::Fill { region, color });
         }
 
-        fn copy(&mut self, region: Region, _bitmap: &Bitmap, _y: i32, _x: i32) {
+        fn copy(&mut self, region: Region, _bitmap: &Bitmap, _y: i32, _x: i32, _flip: Flip) {
             self.push(Call::Copy { region });
         }
 
@@ -526,7 +623,7 @@ mod tests {
 
     #[test]
     fn draw_block_applies_margins_and_borders() {
-        let r = make_renderer();
+        let mut r = make_renderer();
         let mut buf = vec![0u8; (SIZE * SIZE * 4) as usize];
         let mut map = Mem::new(&mut buf, SIZE);
         let outer = Region {
@@ -538,6 +635,7 @@ mod tests {
         let config = BlockConfig {
             margins: [1, 2, 3, 4],
             borders: [5, 6, 7, 8],
+            corners: [0; 4],
             height: 0,
         };
         let inner = r.draw_block(&mut map, outer, &config, BG, FG);
@@ -549,7 +647,7 @@ mod tests {
 
     #[test]
     fn draw_block_zero_sized_outer_is_noop() {
-        let r = make_renderer();
+        let mut r = make_renderer();
         let mut buf = vec![0u8; 4];
         let mut map = Mem::new(&mut buf, 1);
         let outer = Region {

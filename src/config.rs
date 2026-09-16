@@ -60,6 +60,7 @@ pub struct WorkspaceConfig {
 pub struct BlockConfig {
     pub margins: [i32; 4],
     pub borders: [i32; 4],
+    pub corners: [u32; 4],
     pub height: i32,
 }
 
@@ -68,6 +69,7 @@ impl BlockConfig {
         Self {
             margins: self.margins.map(|v| v * scale),
             borders: self.borders.map(|v| v * scale),
+            corners: self.corners.map(|v| v * scale as u32),
             height: self.height * scale,
         }
     }
@@ -79,6 +81,7 @@ impl BlockConfig {
     fn visit(&mut self, toml: &mut Toml) {
         toml.get("margins").set(&mut self.margins);
         toml.get("borders").set(&mut self.borders);
+        toml.get("corners").set(&mut self.corners);
         toml.get("height").set(&mut self.height);
     }
 }
@@ -115,7 +118,8 @@ impl WorkspaceConfig {
         Self {
             block: BlockConfig {
                 height: 26,
-                borders: [1, 1, 1, 1],
+                borders: [1; 4],
+                corners: [0; 4],
                 margins: [0, 2, 2, 0],
             },
             active: StateConfig {
@@ -919,6 +923,7 @@ mod tests {
         let w = config.workspace;
         assert_eq!(w.block.borders, [1, 1, 1, 1]);
         assert_eq!(w.block.margins, [0, 2, 2, 0]);
+        assert_eq!(w.block.corners, [0, 0, 0, 0]);
         assert_eq!(w.block.height, 26);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));

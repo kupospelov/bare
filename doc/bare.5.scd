@@ -236,6 +236,11 @@ by *\[workspace\]* and all block types.
 
 	Default: \[0, 0, 0, 0\]
 
+*corners*=_\[top-left, top-right, bottom-right, bottom-left\]_
+	Set the radius of each corner in pixels.
+
+	Default: \[0, 0, 0, 0\]
+
 *margins*=_\[top, right, bottom, left\]_
 	Set the margin of the block in pixels.
 
