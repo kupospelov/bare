@@ -37,7 +37,7 @@ fn blend_border(fg: u8, bg: u8, br: u8, inner: f32, outer: f32) -> u8 {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
-struct CacheKey {
+struct GlyphKey {
     pub c: char,
     pub ft_size: u32,
     pub ft_color: Color,
@@ -54,17 +54,20 @@ struct CornerKey {
     br_left: u32,
 }
 
-// TODO: Extract (width, height, pixels) into a separate struct.
 pub struct Bitmap {
     pub width: usize,
     pub height: usize,
-    pub xmin: i32,
-    pub ymin: i32,
-    pub advance_width: f32,
     pub pixels: Vec<u8>, // BGRA
 }
 
-fn render_corner(key: CornerKey) -> Bitmap {
+pub struct Glyph {
+    pub xmin: i32,
+    pub ymin: i32,
+    pub advance_width: f32,
+    pub bitmap: Bitmap,
+}
+
+fn raster_corner(key: CornerKey) -> Bitmap {
     let CornerKey {
         radius,
         fg_color,
@@ -120,16 +123,13 @@ fn render_corner(key: CornerKey) -> Bitmap {
     Bitmap {
         width: n,
         height: n,
-        xmin: 0,
-        ymin: 0,
-        advance_width: 0.0,
         pixels,
     }
 }
 
 pub struct Rasterizer {
     fonts: Vec<font::Definition>,
-    cache: HashMap<CacheKey, Bitmap>,
+    glyphs: HashMap<GlyphKey, Glyph>,
     corners: HashMap<CornerKey, Bitmap>,
 }
 
@@ -137,7 +137,7 @@ impl Rasterizer {
     pub fn new(fonts: Vec<font::Definition>) -> Self {
         Self {
             fonts,
-            cache: HashMap::new(),
+            glyphs: HashMap::new(),
             corners: HashMap::new(),
         }
     }
@@ -154,20 +154,14 @@ impl Rasterizer {
         metrics.ascent as i32
     }
 
-    pub fn rasterize(
-        &mut self,
-        c: char,
-        ft_size: u32,
-        ft_color: Color,
-        bg_color: Color,
-    ) -> &Bitmap {
-        let key = CacheKey {
+    pub fn glyph(&mut self, c: char, ft_size: u32, ft_color: Color, bg_color: Color) -> &Glyph {
+        let key = GlyphKey {
             c,
             ft_size,
             ft_color,
             bg_color,
         };
-        self.cache.entry(key).or_insert_with(|| {
+        self.glyphs.entry(key).or_insert_with(|| {
             let (metrics, bitmap) = {
                 let definition = self
                     .fonts
@@ -182,13 +176,15 @@ impl Rasterizer {
 
             let mut pixels = vec![0u8; metrics.width * metrics.height * 4];
             blend_pixels(&mut pixels, &bitmap, ft_color, bg_color);
-            Bitmap {
-                width: metrics.width,
-                height: metrics.height,
+            Glyph {
                 xmin: metrics.xmin,
                 ymin: metrics.ymin,
                 advance_width: metrics.advance_width,
-                pixels,
+                bitmap: Bitmap {
+                    width: metrics.width,
+                    height: metrics.height,
+                    pixels,
+                },
             }
         })
     }
@@ -213,7 +209,7 @@ impl Rasterizer {
         };
         self.corners
             .entry(key)
-            .or_insert_with(|| render_corner(key))
+            .or_insert_with(|| raster_corner(key))
     }
 
     pub fn get_default_font_size(&self, scale: i32) -> u32 {
@@ -317,7 +313,7 @@ mod tests {
                 let name = format!("render_corner/radius={radius}/{case}");
 
                 bench(&name, || {
-                    black_box(render_corner(black_box(key)));
+                    black_box(raster_corner(black_box(key)));
                 });
             }
         }

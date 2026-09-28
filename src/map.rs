@@ -113,9 +113,6 @@ mod tests {
         Bitmap {
             width,
             height,
-            xmin: 0,
-            ymin: 0,
-            advance_width: width as f32,
             pixels,
         }
     }

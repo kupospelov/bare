@@ -286,7 +286,7 @@ impl Renderer {
             .iter()
             .map(|c| {
                 self.rasterizer
-                    .rasterize(*c, ft_size, ft_color, bg_color)
+                    .glyph(*c, ft_size, ft_color, bg_color)
                     .advance_width as i32
             })
             .sum::<i32>();
@@ -294,15 +294,15 @@ impl Renderer {
         let baseline = region.y + (region.h as i32 + ascent - 1) / 2;
         let mut x_start = region.x + (region.w as i32 - advance + 1) / 2;
         for &c in &chars {
-            let bitmap = self.rasterizer.rasterize(c, ft_size, ft_color, bg_color);
+            let glyph = self.rasterizer.glyph(c, ft_size, ft_color, bg_color);
             map.copy(
                 region,
-                bitmap,
-                baseline - bitmap.ymin - bitmap.height as i32,
-                x_start + bitmap.xmin,
+                &glyph.bitmap,
+                baseline - glyph.ymin - glyph.bitmap.height as i32,
+                x_start + glyph.xmin,
                 Flip { h: false, v: false },
             );
-            x_start += bitmap.advance_width as i32;
+            x_start += glyph.advance_width as i32;
         }
     }
 
