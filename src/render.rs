@@ -342,6 +342,9 @@ impl Renderer {
         qh: &QueueHandle<crate::State>,
         blocks: &mut Blocks,
     ) {
+        if output.frame_pending {
+            return;
+        }
         let Some(mut dirty) = output.dirty else {
             return;
         };
@@ -407,6 +410,8 @@ impl Renderer {
             physical_width as i32,
             dirty.end - dirty.start,
         );
+        output.surface.frame(qh, output_id.clone());
+        output.frame_pending = true;
         output.surface.commit();
         output.dirty = None;
         debug!("Output {}: rendering done", output_id);

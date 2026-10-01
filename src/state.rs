@@ -13,7 +13,8 @@ use wayland_client::{
     backend::ObjectId,
     event_created_child,
     protocol::{
-        wl_buffer, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_surface,
+        wl_buffer, wl_callback, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_surface,
     },
 };
 use wayland_protocols::ext::workspace::v1::client::{
@@ -459,6 +460,23 @@ impl_empty_dispatch!(
     wp_cursor_shape_manager_v1::WpCursorShapeManagerV1,
     wp_cursor_shape_device_v1::WpCursorShapeDeviceV1
 );
+
+impl Dispatch<wl_callback::WlCallback, ObjectId> for State {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        output_id: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event
+            && let Some(output) = state.outputs.get_mut(output_id)
+        {
+            output.frame_pending = false;
+        }
+    }
+}
 
 impl Dispatch<wl_buffer::WlBuffer, (ObjectId, usize)> for State {
     fn event(
