@@ -11,7 +11,7 @@ use pipewire_native::{
     main_loop::MainLoop,
     properties::Properties,
     proxy::metadata::MetadataEvents,
-    proxy::node::NodeEvents,
+    proxy::node::{NodeChangeMask, NodeEvents},
     proxy::{ProxyEvents, metadata::Metadata, node::Node, registry::RegistryEvents},
     some_closure, types,
 };
@@ -20,23 +20,68 @@ use pipewire_native_spa::{
     pod::{RawPodOwned, parser::Parser},
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone)]
 struct SinkState {
+    id: u32,
     percent: Option<u8>,
     mute: bool,
+    props: HashMap<String, String>,
+}
+
+impl SinkState {
+    fn set_props(&mut self, props: &Properties, watched_props: &[String]) {
+        self.props.clear();
+        for key in watched_props {
+            if let Some(value) = props.get(key) {
+                self.props.insert(key.clone(), value.to_owned());
+            }
+        }
+    }
 }
 
 #[derive(Default)]
 struct Sinks {
     default_sink: Option<String>,
     sinks: HashMap<String, SinkState>,
+    watched_props: Vec<String>,
 }
 
 impl Sinks {
+    fn add(&mut self, id: u32, name: String, props: &Properties) {
+        let sink = self.sinks.entry(name).or_default();
+        sink.id = id;
+        sink.set_props(props, &self.watched_props);
+        debug!(
+            "PipeWire node #{}: created with properties {:?}",
+            sink.id, sink.props
+        );
+    }
+
+    fn set_props(&mut self, name: &str, props: &Properties) {
+        if let Some(sink) = self.sinks.get_mut(name) {
+            sink.set_props(props, &self.watched_props);
+            debug!(
+                "PipeWire node #{}: changed properties {:?}",
+                sink.id, sink.props
+            );
+        }
+    }
+
+    fn remove(&mut self, id: u32) {
+        self.sinks.retain(|_, sink| {
+            if sink.id == id {
+                debug!("PipeWire node #{}: removed", id);
+                false
+            } else {
+                true
+            }
+        });
+    }
+
     fn current(&self) -> SinkState {
         self.default_sink
             .as_ref()
@@ -70,6 +115,7 @@ impl Group {
             sinks: Arc::new(RwLock::new(Sinks {
                 default_sink: None,
                 sinks: HashMap::new(),
+                watched_props: Vec::new(),
             })),
         }
     }
@@ -93,6 +139,14 @@ impl Group {
         } else {
             pipewire::init();
             debug!("PipeWire initialized");
+
+            let props: HashSet<_> = self
+                .instances
+                .iter()
+                .flat_map(|i| i.config.properties.keys().cloned())
+                .collect();
+            debug!("PipeWire properties to watch: {:?}", props);
+            self.sinks.write().unwrap().watched_props = props.into_iter().collect();
         };
 
         let sinks = self.sinks.clone();
@@ -149,12 +203,21 @@ impl Group {
                             warning!("PipeWire: node {} is internal, its properties may not be displayed correctly", name);
                         }
 
+                        sinks.write().unwrap().add(id, name.clone(), props);
                         let object = registry.bind(id, interface, version).unwrap();
                         let node = object.downcast::<Node>().unwrap();
                         node.subscribe_params(&[ParamType::Props])
                             .expect("Failed to subscribe node");
                         node.add_listener(NodeEvents {
-                            info: Some(Box::new(move |_| {})),
+                            info: Some(Box::new({
+                                let sinks = sinks.clone();
+                                let name = name.clone();
+                                move |info| {
+                                    if info.mask.contains(NodeChangeMask::PROPS) {
+                                        sinks.write().unwrap().set_props(&name, info.props);
+                                    }
+                                }
+                            })),
 
                             param: Some(Box::new({
                                 let sinks = sinks.clone();
@@ -179,7 +242,9 @@ impl Group {
                     }
                 };
             }),
-            global_remove: some_closure!([] _id, {}),
+            global_remove: some_closure!([^(sinks)] id, {
+                sinks.write().unwrap().remove(id);
+            }),
         });
 
         let fd = main_loop.get_fd();
@@ -255,7 +320,10 @@ fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sin
 
     if volume.is_some() || mute.is_some() {
         let mut sinks = sinks.write().unwrap();
-        let sink = sinks.sinks.entry(node_name.to_string()).or_default();
+        let Some(sink) = sinks.sinks.get_mut(node_name) else {
+            debug!("PipeWire node {}: not in the map", node_name);
+            return;
+        };
         if let Some(v) = volume {
             sink.percent = Some(v);
         }
@@ -270,6 +338,7 @@ fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sin
 pub struct Volume {
     id: usize,
     sink: SinkState,
+    down: bool,
     config: VolumeConfig,
 }
 
@@ -278,14 +347,21 @@ impl Volume {
         Self {
             id,
             sink: SinkState::default(),
+            down: !config.properties.is_empty(),
             config: config.clone(),
         }
     }
 
     fn update(&mut self, current: &SinkState) -> Option<BlockDirty> {
-        let layout = self.sink.mute != current.mute;
+        let down = !self
+            .config
+            .properties
+            .iter()
+            .all(|(key, value)| current.props.get(key) == Some(value));
+        let layout = self.down != down || self.sink.mute != current.mute;
         if layout || self.sink.percent != current.percent {
             self.sink = current.clone();
+            self.down = down;
             Some(BlockDirty {
                 index: self.id,
                 layout,
@@ -296,7 +372,9 @@ impl Volume {
     }
 
     fn format(&self) -> &[VolumeFormatItem] {
-        if self.sink.mute {
+        if self.down {
+            &self.config.down.format
+        } else if self.sink.mute {
             &self.config.muted.format
         } else {
             &self.config.format
@@ -310,7 +388,9 @@ impl Block for Volume {
     }
 
     fn colors(&self) -> &ColorConfig {
-        if self.sink.mute {
+        if self.down {
+            &self.config.down.color
+        } else if self.sink.mute {
             &self.config.muted.color
         } else {
             &self.config.color
@@ -355,9 +435,11 @@ mod tests {
             .update(&SinkState {
                 percent: Some(50),
                 mute: false,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
+        assert_eq!(volume.colors(), &config.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -371,9 +453,11 @@ mod tests {
             .update(&SinkState {
                 percent: Some(40),
                 mute: false,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
+        assert_eq!(volume.colors(), &config.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -387,9 +471,11 @@ mod tests {
             .update(&SinkState {
                 percent: Some(40),
                 mute: true,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(volume.format(), config.muted.format);
+        assert_eq!(volume.colors(), &config.muted.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -403,9 +489,47 @@ mod tests {
             .update(&SinkState {
                 percent: Some(40),
                 mute: false,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
+        assert_eq!(volume.colors(), &config.color);
+        assert_eq!(
+            dirty,
+            BlockDirty {
+                index: 3,
+                layout: true,
+            }
+        );
+
+        // Same with matching properties
+        volume
+            .config
+            .properties
+            .insert("device.api".into(), "alsa".into());
+        let dirty = volume.update(&SinkState {
+            percent: Some(40),
+            mute: false,
+            props: HashMap::from([
+                ("device.api".into(), "alsa".into()),
+                ("device.bus".into(), "pci".into()),
+            ]),
+            ..Default::default()
+        });
+        assert_eq!(volume.format(), config.format);
+        assert_eq!(volume.colors(), &config.color);
+        assert_eq!(dirty, None);
+
+        // Same with non-matching properties
+        let dirty = volume
+            .update(&SinkState {
+                percent: Some(40),
+                mute: false,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(volume.format(), config.down.format);
+        assert_eq!(volume.colors(), &config.down.color);
         assert_eq!(
             dirty,
             BlockDirty {

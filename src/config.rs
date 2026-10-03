@@ -154,6 +154,8 @@ impl WorkspaceConfig {
 pub struct VolumeConfig {
     pub block: BlockConfig,
     pub color: ColorConfig,
+    pub properties: HashMap<String, String>,
+    pub down: StateConfig<VolumeFormatItem>,
     pub muted: StateConfig<VolumeFormatItem>,
     pub format: Vec<VolumeFormatItem>,
 }
@@ -168,6 +170,14 @@ impl VolumeConfig {
         Self {
             block: BlockConfig::default(),
             color: color.clone(),
+            properties: HashMap::new(),
+            down: StateConfig {
+                color: ColorConfig {
+                    text: BAD,
+                    ..*color
+                },
+                format: format.clone(),
+            },
             muted: StateConfig {
                 color: ColorConfig {
                     text: DEGRADED,
@@ -766,9 +776,12 @@ impl Visit for VolumeConfig {
         self.block.visit(&mut toml);
 
         toml.get("format").set(&mut self.format);
+        self.down.format.clone_from(&self.format);
         self.muted.format.clone_from(&self.format);
 
+        toml.get("properties").set(&mut self.properties);
         toml.get("color").visit(&mut self.color);
+        toml.get("down").visit(&mut self.down);
         toml.get("muted").visit(&mut self.muted);
         toml.empty();
     }
@@ -1323,6 +1336,7 @@ mod tests {
             ]
         );
         assert_eq!(v.muted.format, v.format);
+        assert_eq!(v.down.format, v.format);
     }
 
     #[test]
@@ -1330,9 +1344,11 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [volume.0]
+            properties = { "device.api" = "bluez5" }
             format = ["[volume]", "hello0"]
 
             [volume.1]
+            properties = { "device.api" = "alsa", "device.bus" = "pci" }
             format = ["[volume]", "hello1"]
 
             [volume.2]
@@ -1340,6 +1356,15 @@ mod tests {
 
             [volume.0.muted.color]
             text = "#123456"
+
+            [volume.0.down.color]
+            text = "#abcdef"
+
+            [volume.1.down]
+            format = []
+
+            [volume.2.down]
+            format = ["OFF"]
 
             [volume.1.muted]
             format = []
@@ -1352,14 +1377,29 @@ mod tests {
 
         // Inherited
         let v0 = config.volume.get("0").unwrap();
+        assert_eq!(
+            v0.properties,
+            HashMap::from([("device.api".into(), "bluez5".into())])
+        );
         assert_eq!(v0.muted.format, v0.format);
+        assert_eq!(v0.down.format, v0.format);
 
         // Empty override
         let v1 = config.volume.get("1").unwrap();
+        assert_eq!(
+            v1.properties,
+            HashMap::from([
+                ("device.api".into(), "alsa".into()),
+                ("device.bus".into(), "pci".into()),
+            ])
+        );
         assert_eq!(v1.muted.format, vec![]);
+        assert_eq!(v1.down.format, vec![]);
 
         // Override
         let v2 = config.volume.get("2").unwrap();
+        assert!(v2.properties.is_empty());
+        assert_eq!(v2.down.format, vec![VolumeFormatItem::Label("OFF".into())]);
         assert_eq!(
             v2.muted.format,
             vec![

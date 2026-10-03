@@ -129,6 +129,12 @@ format that defaults to the regular block format.
 
 	Display the volume of the default PipeWire audio sink.
 
+	*properties*=_{ "key" = "value", ... }_
+		Match PipeWire properties. If the default sink does not match the
+		properties, the block is shown as *down*.
+
+		Default: {}
+
 	*format*=_\[token, ...\]_
 
 		Default: \["VOL", "\[volume\]"\]
@@ -138,8 +144,8 @@ format that defaults to the regular block format.
 		*\[volume\]*
 			Current volume percentage of the default audio sink.
 
-	The volume has the *muted* state. The state defines color and format
-	sections. See *COLORS* for more information.
+	The volume has the *down* and *muted* states. Each state defines color and
+	format sections. See *COLORS* for more information.
 
 ## Battery
 
@@ -293,6 +299,10 @@ The default colors are:
 :[ _inherited_
 |[ *\[volume.<name>.muted.color\]*
 :[ #dfaf8f
+:[ _inherited_
+:[ _inherited_
+|[ *\[volume.<name>.down.color\]*
+:[ #dca3a3
 :[ _inherited_
 :[ _inherited_
 |[ *\[battery.<name>.charging.color\]*
