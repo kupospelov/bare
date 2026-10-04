@@ -24,7 +24,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
+struct Sink {
+    percent: Option<u8>,
+    mute: bool,
+    down: bool,
+    idle: bool,
+}
+
+#[derive(Debug, Default)]
 struct SinkState {
     id: u32,
     percent: Option<u8>,
@@ -33,6 +41,12 @@ struct SinkState {
 }
 
 impl SinkState {
+    fn match_props(&self, props: &HashMap<String, String>) -> bool {
+        props
+            .iter()
+            .all(|(key, value)| self.props.get(key) == Some(value))
+    }
+
     fn set_props(&mut self, props: &Properties, watched_props: &[String]) {
         self.props.clear();
         for key in watched_props {
@@ -82,12 +96,30 @@ impl Sinks {
         });
     }
 
-    fn current(&self) -> SinkState {
-        self.default_sink
-            .as_ref()
-            .and_then(|n| self.sinks.get(n))
-            .cloned()
-            .unwrap_or_default()
+    fn find(&self, properties: &HashMap<String, String>) -> Sink {
+        let found = if properties.is_empty() {
+            self.default_sink
+                .as_ref()
+                .and_then(|n| self.sinks.get_key_value(n))
+        } else {
+            self.sinks
+                .iter()
+                .find(|(_, sink)| sink.match_props(properties))
+        };
+
+        if let Some((name, sink)) = found {
+            Sink {
+                percent: sink.percent,
+                mute: sink.mute,
+                down: false,
+                idle: self.default_sink.as_ref() != Some(name),
+            }
+        } else {
+            Sink {
+                down: true,
+                ..Default::default()
+            }
+        }
     }
 
     fn retain_default_sink(&mut self) {
@@ -260,12 +292,13 @@ impl Group {
                     let _ = &context;
 
                     let _ = main_loop.iterate(Some(std::time::Duration::ZERO));
-                    let current = sinks.read().unwrap().current();
+                    let sinks = sinks.read().unwrap();
 
                     for i in 0..state.blocks.volume.instances.len() {
                         let dirty = {
                             let instance = &mut state.blocks.volume.instances[i];
-                            let Some(update) = instance.update(&current) else {
+                            let sink = sinks.find(&instance.config.properties);
+                            let Some(update) = instance.update(sink) else {
                                 continue;
                             };
                             update
@@ -337,8 +370,7 @@ fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sin
 
 pub struct Volume {
     id: usize,
-    sink: SinkState,
-    down: bool,
+    sink: Sink,
     config: VolumeConfig,
 }
 
@@ -346,22 +378,20 @@ impl Volume {
     pub fn new(id: usize, config: &VolumeConfig) -> Self {
         Self {
             id,
-            sink: SinkState::default(),
-            down: !config.properties.is_empty(),
+            sink: Sink {
+                down: !config.properties.is_empty(),
+                ..Default::default()
+            },
             config: config.clone(),
         }
     }
 
-    fn update(&mut self, current: &SinkState) -> Option<BlockDirty> {
-        let down = !self
-            .config
-            .properties
-            .iter()
-            .all(|(key, value)| current.props.get(key) == Some(value));
-        let layout = self.down != down || self.sink.mute != current.mute;
-        if layout || self.sink.percent != current.percent {
-            self.sink = current.clone();
-            self.down = down;
+    fn update(&mut self, sink: Sink) -> Option<BlockDirty> {
+        let layout = self.sink.down != sink.down
+            || self.sink.idle != sink.idle
+            || self.sink.mute != sink.mute;
+        if layout || self.sink.percent != sink.percent {
+            self.sink = sink;
             Some(BlockDirty {
                 index: self.id,
                 layout,
@@ -372,8 +402,10 @@ impl Volume {
     }
 
     fn format(&self) -> &[VolumeFormatItem] {
-        if self.down {
+        if self.sink.down {
             &self.config.down.format
+        } else if self.sink.idle {
+            &self.config.idle.format
         } else if self.sink.mute {
             &self.config.muted.format
         } else {
@@ -388,8 +420,10 @@ impl Block for Volume {
     }
 
     fn colors(&self) -> &ColorConfig {
-        if self.down {
+        if self.sink.down {
             &self.config.down.color
+        } else if self.sink.idle {
+            &self.config.idle.color
         } else if self.sink.mute {
             &self.config.muted.color
         } else {
@@ -421,6 +455,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sink_selection() {
+        let properties = HashMap::from([("device.api".into(), "alsa".into())]);
+        let mut sinks = Sinks {
+            default_sink: Some("other".into()),
+            sinks: HashMap::from([
+                (
+                    "first".into(),
+                    SinkState {
+                        id: 1,
+                        percent: Some(10),
+                        props: properties.clone(),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "second".into(),
+                    SinkState {
+                        id: 2,
+                        percent: Some(20),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "other".into(),
+                    SinkState {
+                        id: 3,
+                        percent: Some(30),
+                        ..Default::default()
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        // first, idle
+        let sink = sinks.find(&properties);
+        assert_eq!(sink.percent, Some(10));
+        assert!(sink.idle);
+
+        // first, default
+        sinks.default_sink = Some("first".into());
+        let sink = sinks.find(&properties);
+        assert_eq!(sink.percent, Some(10));
+        assert!(!sink.idle);
+
+        // first, idle
+        sinks.default_sink = Some("other".into());
+        let sink = sinks.find(&properties);
+        assert_eq!(sink.percent, Some(10));
+        assert!(sink.idle);
+
+        // default
+        let sink = sinks.find(&HashMap::new());
+        assert_eq!(sink.percent, Some(30));
+        assert!(!sink.idle);
+
+        // down
+        let properties = HashMap::from([
+            ("device.api".into(), "alsa".into()),
+            ("device.bus".into(), "pci".into()),
+        ]);
+        let sink = sinks.find(&properties);
+        assert!(sink.down);
+    }
+
+    #[test]
     fn state_changes() {
         let mut config = VolumeConfig::default(&ColorConfig::default());
         config.format = vec![VolumeFormatItem::Label("VOL".into())];
@@ -432,7 +532,7 @@ mod tests {
 
         // Initialize
         let dirty = volume
-            .update(&SinkState {
+            .update(Sink {
                 percent: Some(50),
                 mute: false,
                 ..Default::default()
@@ -450,7 +550,7 @@ mod tests {
 
         // Volume changes
         let dirty = volume
-            .update(&SinkState {
+            .update(Sink {
                 percent: Some(40),
                 mute: false,
                 ..Default::default()
@@ -468,7 +568,7 @@ mod tests {
 
         // Mute
         let dirty = volume
-            .update(&SinkState {
+            .update(Sink {
                 percent: Some(40),
                 mute: true,
                 ..Default::default()
@@ -486,7 +586,7 @@ mod tests {
 
         // Unmute
         let dirty = volume
-            .update(&SinkState {
+            .update(Sink {
                 percent: Some(40),
                 mute: false,
                 ..Default::default()
@@ -502,29 +602,12 @@ mod tests {
             }
         );
 
-        // Same with matching properties
-        volume
-            .config
-            .properties
-            .insert("device.api".into(), "alsa".into());
-        let dirty = volume.update(&SinkState {
-            percent: Some(40),
-            mute: false,
-            props: HashMap::from([
-                ("device.api".into(), "alsa".into()),
-                ("device.bus".into(), "pci".into()),
-            ]),
-            ..Default::default()
-        });
-        assert_eq!(volume.format(), config.format);
-        assert_eq!(volume.colors(), &config.color);
-        assert_eq!(dirty, None);
-
-        // Same with non-matching properties
+        // Remove
         let dirty = volume
-            .update(&SinkState {
+            .update(Sink {
                 percent: Some(40),
                 mute: false,
+                down: true,
                 ..Default::default()
             })
             .unwrap();

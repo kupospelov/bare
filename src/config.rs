@@ -156,6 +156,7 @@ pub struct VolumeConfig {
     pub color: ColorConfig,
     pub properties: HashMap<String, String>,
     pub down: StateConfig<VolumeFormatItem>,
+    pub idle: StateConfig<VolumeFormatItem>,
     pub muted: StateConfig<VolumeFormatItem>,
     pub format: Vec<VolumeFormatItem>,
 }
@@ -176,6 +177,10 @@ impl VolumeConfig {
                     text: BAD,
                     ..*color
                 },
+                format: format.clone(),
+            },
+            idle: StateConfig {
+                color: color.clone(),
                 format: format.clone(),
             },
             muted: StateConfig {
@@ -777,11 +782,14 @@ impl Visit for VolumeConfig {
 
         toml.get("format").set(&mut self.format);
         self.down.format.clone_from(&self.format);
+        self.idle.format.clone_from(&self.format);
         self.muted.format.clone_from(&self.format);
 
         toml.get("properties").set(&mut self.properties);
         toml.get("color").visit(&mut self.color);
+        self.idle.color.clone_from(&self.color);
         toml.get("down").visit(&mut self.down);
+        toml.get("idle").visit(&mut self.idle);
         toml.get("muted").visit(&mut self.muted);
         toml.empty();
     }
@@ -1337,6 +1345,8 @@ mod tests {
         );
         assert_eq!(v.muted.format, v.format);
         assert_eq!(v.down.format, v.format);
+        assert_eq!(v.idle.format, v.format);
+        assert_eq!(v.idle.color, v.color);
     }
 
     #[test]
@@ -1359,6 +1369,15 @@ mod tests {
 
             [volume.0.down.color]
             text = "#abcdef"
+
+            [volume.0.idle.color]
+            text = "#123456"
+
+            [volume.1.idle]
+            format = []
+
+            [volume.2.idle]
+            format = ["OFF"]
 
             [volume.1.down]
             format = []
@@ -1383,6 +1402,8 @@ mod tests {
         );
         assert_eq!(v0.muted.format, v0.format);
         assert_eq!(v0.down.format, v0.format);
+        assert_eq!(v0.idle.format, v0.format);
+        assert_eq!(v0.idle.color.text, Color::rgb(0x12, 0x34, 0x56));
 
         // Empty override
         let v1 = config.volume.get("1").unwrap();
@@ -1395,11 +1416,13 @@ mod tests {
         );
         assert_eq!(v1.muted.format, vec![]);
         assert_eq!(v1.down.format, vec![]);
+        assert_eq!(v1.idle.format, vec![]);
 
         // Override
         let v2 = config.volume.get("2").unwrap();
         assert!(v2.properties.is_empty());
         assert_eq!(v2.down.format, vec![VolumeFormatItem::Label("OFF".into())]);
+        assert_eq!(v2.idle.format, vec![VolumeFormatItem::Label("OFF".into())]);
         assert_eq!(
             v2.muted.format,
             vec![
@@ -1704,6 +1727,7 @@ mod tests {
             border: Color::rgb(0x66, 0x77, 0x88),
         };
         assert_eq!(config.volume.get("0").unwrap().color, bar_color);
+        assert_eq!(config.volume.get("0").unwrap().idle.color, bar_color);
         assert_eq!(config.battery.get("0").unwrap().color, bar_color);
         assert_eq!(config.time.get("0").unwrap().color, bar_color);
         assert_eq!(
