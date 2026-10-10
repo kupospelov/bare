@@ -229,7 +229,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -347,6 +347,16 @@ name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
 dependencies = [
  "cfg-if",
  "windows-link",
@@ -559,10 +569,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
+name = "pastey"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pin-project-lite"
@@ -572,14 +582,14 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipewire-native"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db4da5bc428cfd0d93a1f2c7f996bb2a7ce62151f773fea900a636e5c3aeaa67"
+checksum = "bd561dae99232d141458264bdbd755080f4d425c6586bf29a567d05b2310c743"
 dependencies = [
  "bitflags",
  "libc",
  "parking_lot",
- "paste",
+ "pastey",
  "pipewire-native-macros",
  "pipewire-native-spa",
  "pkg-config",
@@ -588,9 +598,9 @@ dependencies = [
 
 [[package]]
 name = "pipewire-native-macros"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9a3b131b8b239675111a3d501d877fec5c8fda9239fef4132a764c103dc0cf7"
+checksum = "9a3b0afbc81de0c2eb9e4f0f89381209f35d5fc07187f41d5920d69a54e47010"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -599,14 +609,14 @@ dependencies = [
 
 [[package]]
 name = "pipewire-native-spa"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f7901f35d9a00e9ced18907b4a4c79aa7293028274311fad001b048f644dd50"
+checksum = "a76f5c1b9a076141bb117531891da911e642b41ef12b85de055405084d07443d"
 dependencies = [
  "bitflags",
  "cc",
  "libc",
- "libloading",
+ "libloading 0.9.0",
  "num",
  "pipewire-native-macros",
  "pkg-config",

@@ -16,8 +16,8 @@ calloop-wayland-source = "0.4"
 tz-rs = "0.7.3"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-pipewire-native = "0.1.4"
-pipewire-native-spa = "0.1.4"
+pipewire-native = "0.2"
+pipewire-native-spa = "0.2"
 clap = { version = "4", features = ["derive"] }
 neli-wifi = "0.6.1"
 
