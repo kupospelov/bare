@@ -168,6 +168,12 @@ format that defaults to the regular block format.
 
 		Default: true
 
+	*design_capacity*=_boolean_
+		Calculate battery charge percentage relative to the design capacity
+		instead of the actual capacity.
+
+		Default: false
+
 	*format*=_\[token, ...\]_
 
 		Default: \["BAT", "\[capacity\]"\]

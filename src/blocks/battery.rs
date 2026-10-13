@@ -3,7 +3,7 @@ use crate::blocks::FormatItem;
 use crate::config::{BatteryConfig, BatteryFormatItem, BlockConfig, ColorConfig};
 use crate::raster::Rasterizer;
 use crate::state::State;
-use crate::{debug, error, fail};
+use crate::{debug, error, fail, warning};
 use nix::sys::socket::{
     self, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
@@ -56,11 +56,10 @@ impl Group {
                     loop {
                         match socket::recv(socket.as_raw_fd(), &mut buf, MsgFlags::empty()) {
                             Ok(n) => {
-                                let event = parse_event(buf[..n].split(|&b| b == 0), true);
                                 for i in 0..state.blocks.battery.instances.len() {
                                     let update = {
                                         let instance = &mut state.blocks.battery.instances[i];
-                                        let Some(update) = instance.update(&event) else {
+                                        let Some(update) = instance.update(&buf[..n]) else {
                                             continue;
                                         };
                                         update
@@ -110,10 +109,83 @@ impl BatteryState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BatteryCapacity {
+    Actual,
+    Charge(u64),
+    Energy(u64),
+}
+
+impl BatteryCapacity {
+    fn new(config: &BatteryConfig) -> Self {
+        if !config.design_capacity {
+            return Self::Actual;
+        }
+
+        match std::fs::read(&config.path) {
+            Ok(bytes) => Self::parse(bytes.split(|&b| b == b'\n')),
+            Err(_) => Self::Actual,
+        }
+    }
+
+    fn key(self) -> &'static [u8] {
+        match self {
+            Self::Actual => b"POWER_SUPPLY_CAPACITY=",
+            Self::Charge(_) => b"POWER_SUPPLY_CHARGE_NOW=",
+            Self::Energy(_) => b"POWER_SUPPLY_ENERGY_NOW=",
+        }
+    }
+
+    fn percentage(self, value: &str) -> Option<u8> {
+        match self {
+            Self::Actual => value
+                .parse()
+                .inspect_err(|_| error!("Cannot parse battery capacity: {}, {:?}", value, self))
+                .ok(),
+            Self::Charge(design) | Self::Energy(design) => {
+                let now = value
+                    .parse::<u64>()
+                    .inspect_err(|_| error!("Cannot parse battery capacity: {}, {:?}", value, self))
+                    .ok()?;
+                Some(
+                    (100.0 * now as f64 / design as f64)
+                        .round()
+                        .clamp(0.0, 100.0) as u8,
+                )
+            }
+        }
+    }
+
+    fn parse<'a>(fields: impl Iterator<Item = &'a [u8]>) -> Self {
+        for f in fields {
+            let Ok(field) = std::str::from_utf8(f) else {
+                continue;
+            };
+            let mut parts = field.splitn(2, '=');
+            let capacity: fn(u64) -> Self = match parts.next() {
+                Some("POWER_SUPPLY_ENERGY_FULL_DESIGN") => Self::Energy,
+                Some("POWER_SUPPLY_CHARGE_FULL_DESIGN") => Self::Charge,
+                _ => continue,
+            };
+            let Some(value) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
+                warning!("Cannot read design capacity: {}", field);
+                continue;
+            };
+            if value == 0 {
+                warning!("Invalid design capacity: {}", field);
+                continue;
+            }
+            return capacity(value);
+        }
+        Self::Actual
+    }
+}
+
 pub struct Battery {
     id: usize,
     name: String,
     state: BatteryState,
+    full: BatteryCapacity,
     capacity: u8,
     config: BatteryConfig,
 }
@@ -136,6 +208,7 @@ impl Battery {
             id,
             name: name.to_owned(),
             state: BatteryState::default(),
+            full: BatteryCapacity::new(config),
             capacity: 0,
             config: config.clone(),
         };
@@ -144,15 +217,7 @@ impl Battery {
         battery
     }
 
-    fn set_capacity(&mut self, c: String) -> bool {
-        let Ok(value) = c.parse() else {
-            error!(
-                "Battery {}: cannot parse battery capacity: {}",
-                self.name, c
-            );
-            return false;
-        };
-
+    fn set_capacity(&mut self, value: u8) -> bool {
         if value == self.capacity {
             return false;
         }
@@ -182,7 +247,10 @@ impl Battery {
 
     fn read_event_from_path(&self) -> Event {
         match std::fs::read(&self.config.path) {
-            Ok(bytes) => parse_event(bytes.split(|&b| b == b'\n'), false),
+            Ok(bytes) => {
+                let fields = bytes.split(|&b| b == b'\n');
+                parse_event(fields, false, self.full)
+            }
             Err(e) => {
                 if e.kind() != ErrorKind::NotFound {
                     // Expected for the down state.
@@ -198,7 +266,8 @@ impl Battery {
         }
     }
 
-    fn update(&mut self, event: &Event) -> Option<BlockDirty> {
+    fn update(&mut self, bytes: &[u8]) -> Option<BlockDirty> {
+        let event = parse_event(bytes.split(|&b| b == 0), true, self.full);
         let Some(name) = &event.name else {
             return None;
         };
@@ -206,14 +275,14 @@ impl Battery {
             return None;
         }
 
-        self.update_state(event)
+        self.update_state(&event)
     }
 
     fn update_state(&mut self, event: &Event) -> Option<BlockDirty> {
         let state = self.state;
         let mut dirty = false;
-        if let Some(c) = &event.capacity {
-            dirty |= self.set_capacity(c.clone());
+        if let Some(c) = event.capacity {
+            dirty |= self.set_capacity(c);
         }
         if event.gone {
             dirty |= self.set_state(BatteryState::Down)
@@ -245,21 +314,26 @@ struct Event {
     name: Option<String>,
     gone: bool,
     status: Option<String>,
-    capacity: Option<String>,
+    capacity: Option<u8>,
 }
 
-fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>, read_name: bool) -> Event {
+fn parse_event<'a>(
+    fields: impl Iterator<Item = &'a [u8]>,
+    read_name: bool,
+    full: BatteryCapacity,
+) -> Event {
     let mut name = None;
     let mut status = None;
     let mut capacity = None;
     let mut gone = false;
+    let capacity_key = full.key();
     for f in fields {
         if read_name && let Some(v) = f.strip_prefix(b"POWER_SUPPLY_NAME=") {
             name = std::str::from_utf8(v).ok().map(str::to_owned);
         } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_STATUS=") {
             status = std::str::from_utf8(v).ok().map(str::to_owned);
-        } else if let Some(v) = f.strip_prefix(b"POWER_SUPPLY_CAPACITY=") {
-            capacity = std::str::from_utf8(v).ok().map(str::to_owned);
+        } else if let Some(v) = f.strip_prefix(capacity_key) {
+            capacity = std::str::from_utf8(v).ok();
         } else if f == b"ACTION=remove" || f == b"POWER_SUPPLY_PRESENT=0" {
             gone = true;
         }
@@ -267,7 +341,7 @@ fn parse_event<'a>(fields: impl Iterator<Item = &'a [u8]>, read_name: bool) -> E
     Event {
         name,
         status,
-        capacity,
+        capacity: capacity.and_then(|value| full.percentage(value)),
         gone,
     }
 }
@@ -325,7 +399,62 @@ mod tests {
             name: None,
             gone: false,
             status: Some(status.into()),
-            capacity: Some(capacity.to_string()),
+            capacity: Some(capacity),
+        }
+    }
+
+    #[test]
+    fn capacity_parse() {
+        let cases: &[(&[u8], BatteryCapacity)] = &[
+            (b"", BatteryCapacity::Actual),
+            (b"POWER_SUPPLY_CAPACITY=55", BatteryCapacity::Actual),
+            (
+                b"POWER_SUPPLY_CHARGE_FULL_DESIGN=120",
+                BatteryCapacity::Charge(120),
+            ),
+            (
+                b"POWER_SUPPLY_ENERGY_FULL_DESIGN=80",
+                BatteryCapacity::Energy(80),
+            ),
+            (
+                b"POWER_SUPPLY_CHARGE_FULL_DESIGN=0",
+                BatteryCapacity::Actual,
+            ),
+            (
+                b"POWER_SUPPLY_ENERGY_FULL_DESIGN=invalid",
+                BatteryCapacity::Actual,
+            ),
+            (b"POWER_SUPPLY_CHARGE_FULL_DESIGN", BatteryCapacity::Actual),
+            (
+                b"POWER_SUPPLY_CAPACITY=55\n\
+                  POWER_SUPPLY_CHARGE_FULL_DESIGN=\xff\n\
+                  POWER_SUPPLY_CHARGE_FULL_DESIGN=invalid\n\
+                  POWER_SUPPLY_CHARGE_FULL_DESIGN=0\n\
+                  POWER_SUPPLY_ENERGY_FULL_DESIGN=80",
+                BatteryCapacity::Energy(80),
+            ),
+        ];
+        for &(input, expected) in cases {
+            assert_eq!(
+                BatteryCapacity::parse(input.split(|&b| b == b'\n')),
+                expected,
+                "input: {input:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn capacity_percentage() {
+        let input = b"POWER_SUPPLY_CAPACITY=55\n\
+                      POWER_SUPPLY_CHARGE_NOW=30\n\
+                      POWER_SUPPLY_ENERGY_NOW=40";
+        for (full, expected) in [
+            (BatteryCapacity::Actual, 55),
+            (BatteryCapacity::Charge(120), 25),
+            (BatteryCapacity::Energy(80), 50),
+        ] {
+            let event = parse_event(input.split(|&b| b == b'\n'), false, full);
+            assert_eq!(event.capacity, Some(expected));
         }
     }
 
@@ -346,6 +475,7 @@ mod tests {
             name: "BAT0".into(),
             state: BatteryState::Down,
             capacity: 0,
+            full: BatteryCapacity::Actual,
             config,
         };
 

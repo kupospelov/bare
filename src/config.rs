@@ -225,6 +225,7 @@ impl FormatItem for VolumeFormatItem {
 pub struct BatteryConfig {
     pub path: PathBuf,
     pub poll: bool,
+    pub design_capacity: bool,
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<BatteryFormatItem>,
@@ -260,6 +261,7 @@ impl BatteryConfig {
         Self {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             poll: true,
+            design_capacity: false,
             block: BlockConfig::default(),
             color: color.clone(),
             format: format.clone(),
@@ -809,6 +811,7 @@ impl Visit for BatteryConfig {
 
         toml.get("path").set(&mut self.path);
         toml.get("poll").set(&mut self.poll);
+        toml.get("design_capacity").set(&mut self.design_capacity);
         toml.get("color").visit(&mut self.color);
         toml.get("down").visit(&mut self.down);
         toml.get("charging").visit(&mut self.charging);
@@ -1152,6 +1155,7 @@ mod tests {
             r###"
             [battery.0]
             path = "/sys/class/power_supply/BAT1/uevent"
+            design_capacity = true
             margins = [1, 2, 3, 4]
 
             [battery.0.low]
@@ -1170,6 +1174,7 @@ mod tests {
 
         let b = config.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT1/uevent"));
+        assert!(b.design_capacity);
         assert_eq!(b.block.height, 0);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
         assert_eq!(b.block.margins, [1, 2, 3, 4]);
