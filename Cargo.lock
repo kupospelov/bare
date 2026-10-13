@@ -583,8 +583,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pipewire-native"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd561dae99232d141458264bdbd755080f4d425c6586bf29a567d05b2310c743"
+source = "git+https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git?rev=bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b#bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b"
 dependencies = [
  "bitflags",
  "libc",
@@ -599,8 +598,7 @@ dependencies = [
 [[package]]
 name = "pipewire-native-macros"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a3b0afbc81de0c2eb9e4f0f89381209f35d5fc07187f41d5920d69a54e47010"
+source = "git+https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git?rev=bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b#bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -610,8 +608,7 @@ dependencies = [
 [[package]]
 name = "pipewire-native-spa"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a76f5c1b9a076141bb117531891da911e642b41ef12b85de055405084d07443d"
+source = "git+https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git?rev=bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b#bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b"
 dependencies = [
  "bitflags",
  "cc",

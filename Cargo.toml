@@ -16,8 +16,8 @@ calloop-wayland-source = "0.4"
 tz-rs = "0.7.3"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-pipewire-native = "0.2"
-pipewire-native-spa = "0.2"
+pipewire-native = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git", rev = "bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b" }
+pipewire-native-spa = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-native-rs.git", rev = "bc7fb9287e84e0e7dffe3f37dbaa0b8d761aeb9b" }
 clap = { version = "4", features = ["derive"] }
 neli-wifi = "0.6.1"
 
