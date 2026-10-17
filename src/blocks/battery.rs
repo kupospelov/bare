@@ -29,11 +29,9 @@ impl Group {
 
     pub fn update(&mut self, dirty: &mut Vec<BlockDirty>) {
         for instance in &mut self.instances {
-            if instance.config.poll {
-                let event = instance.read_event_from_path();
-                if let Some(update) = instance.update_state(&event) {
-                    dirty.push(update);
-                }
+            let event = instance.read_event_from_path();
+            if let Some(update) = instance.update_state(&event) {
+                dirty.push(update);
             }
         }
     }
