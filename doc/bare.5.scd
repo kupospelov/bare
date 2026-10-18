@@ -203,6 +203,11 @@ format that defaults to the regular block format.
 
 		Default: local
 
+	*weekdays*=_\[name, ...\]_
+		Seven weekday names, starting with Sunday.
+
+		Default: \["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"\]
+
 	*format*=_\[token, ...\]_
 
 		Default: \["\[hour\]", "\[minute\]"\]
@@ -220,6 +225,9 @@ format that defaults to the regular block format.
 
 		*\[month\]*
 			Current month, zero-padded to two digits.
+
+		*\[weekday\]*
+			Current weekday, using *weekdays*.
 
 ## File
 

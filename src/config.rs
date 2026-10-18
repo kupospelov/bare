@@ -403,6 +403,7 @@ impl FormatItem for WirelessFormatItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimeConfig {
     pub timezone: tz::TimeZone,
+    pub weekdays: [String; 7],
     pub block: BlockConfig,
     pub color: ColorConfig,
     pub format: Vec<TimeFormatItem>,
@@ -420,6 +421,7 @@ impl TimeConfig {
 
         Self {
             timezone,
+            weekdays: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(String::from),
             block: BlockConfig::default(),
             color: color.clone(),
             format: vec![TimeFormatItem::Hour, TimeFormatItem::Minute],
@@ -434,6 +436,7 @@ pub enum TimeFormatItem {
     Minute,
     Day,
     Month,
+    Weekday,
     Label(String),
 }
 
@@ -444,6 +447,7 @@ impl From<String> for TimeFormatItem {
             "[minute]" => Self::Minute,
             "[day]" => Self::Day,
             "[month]" => Self::Month,
+            "[weekday]" => Self::Weekday,
             _ => Self::Label(s),
         }
     }
@@ -848,6 +852,7 @@ impl Visit for TimeConfig {
                     .unwrap_or_else(|e| panic!("cannot read timezone {}: {}", tz, e))
             })
             .set(&mut self.timezone);
+        toml.get("weekdays").set(&mut self.weekdays);
         toml.get("format").set(&mut self.format);
         toml.get("color").visit(&mut self.color);
         toml.empty();
@@ -1275,6 +1280,7 @@ mod tests {
             [time.0]
             margins = [1, 2, 3, 4]
             timezone = "US/Pacific"
+            weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 
             [time.0.color]
             background = "#aabbcc"
@@ -1288,6 +1294,7 @@ mod tests {
             tz::TimeZone::from_posix_tz("US/Pacific").unwrap()
         );
         assert_eq!(t.block.margins, [1, 2, 3, 4]);
+        assert_eq!(t.weekdays, ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
         assert_eq!(t.block.borders, [0, 0, 0, 0]);
         assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(t.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
@@ -1305,7 +1312,23 @@ mod tests {
 
         let t = config.time.get("0").unwrap();
         assert_eq!(t.timezone, tz::TimeZone::local().unwrap());
+        assert_eq!(
+            t.weekdays,
+            ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        );
         assert_eq!(t.format, vec![TimeFormatItem::Hour, TimeFormatItem::Minute]);
+    }
+
+    #[test]
+    fn time_weekdays_rejects_wrong_length() {
+        for weekdays in [
+            "['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr']",
+            "['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']",
+        ] {
+            let input = format!("[time.0]\nweekdays = {weekdays}");
+            let result = std::panic::catch_unwind(|| toml::from_str::<Config>(&input).unwrap());
+            assert!(result.is_err(), "accepted invalid weekdays: {weekdays}");
+        }
     }
 
     #[test]
@@ -1313,7 +1336,7 @@ mod tests {
         let config: Config = toml::from_str(
             r###"
             [time.0]
-            format = ["[hour]", "[minute]", "[day]", "[month]", "hello"]
+            format = ["[hour]", "[minute]", "[day]", "[month]", "[weekday]", "hello"]
             "###,
         )
         .unwrap();
@@ -1326,6 +1349,7 @@ mod tests {
                 TimeFormatItem::Minute,
                 TimeFormatItem::Day,
                 TimeFormatItem::Month,
+                TimeFormatItem::Weekday,
                 TimeFormatItem::Label("hello".into()),
             ]
         );
