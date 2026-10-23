@@ -11,14 +11,15 @@ use pipewire_native::{
     context::Context,
     main_loop::MainLoop,
     properties::Properties,
+    proxy::device::{Device, DeviceChangeMask, DeviceEvents},
     proxy::metadata::MetadataEvents,
     proxy::node::{NodeChangeMask, NodeEvents},
-    proxy::{ProxyEvents, metadata::Metadata, node::Node, registry::RegistryEvents},
+    proxy::{metadata::Metadata, node::Node, registry::RegistryEvents},
     some_closure, types,
 };
 use pipewire_native_spa::{
-    param::{ParamType, props::Prop},
-    pod::{RawPodOwned, parser::Parser},
+    param::{ParamInfoFlags, ParamType, props::Prop, route::Route},
+    pod::{self, RawPodOwned, parser::Parser},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -40,6 +41,8 @@ struct SinkState {
     id: u32,
     percent: Option<u8>,
     mute: bool,
+    device_id: Option<u32>,
+    route_id: Option<i32>,
     props: HashMap<String, String>,
     pending_add: bool,
 }
@@ -52,6 +55,10 @@ impl SinkState {
     }
 
     fn set_props(&mut self, props: &Properties, watched_props: &[String]) {
+        self.device_id = props.get("device.id").and_then(|id| id.parse().ok());
+        self.route_id = props
+            .get("card.profile.device")
+            .and_then(|id| id.parse().ok());
         self.props.clear();
         for key in watched_props {
             if let Some(value) = props.get(key) {
@@ -62,9 +69,37 @@ impl SinkState {
 }
 
 #[derive(Default)]
+struct DeviceState {
+    routes: HashMap<i32, DeviceRoute>,
+}
+
+#[derive(Debug)]
+struct DeviceRoute {
+    muted: bool,
+}
+
+impl DeviceRoute {
+    fn parse(data: &[u8]) -> Result<Option<Self>, pod::Error> {
+        let (route, _) = Parser::new(data).pop_object_raw(|props, _type, _id: u32| {
+            while let Some((key, _, value)) = props.pop_property()? {
+                if Prop::try_from(key) == Ok(Prop::Mute) {
+                    let route = Self {
+                        muted: value.decode::<bool>()?,
+                    };
+                    return Ok(Some(route));
+                }
+            }
+            Ok(None)
+        })?;
+        Ok(route)
+    }
+}
+
+#[derive(Default)]
 struct Sinks {
     default_sink: Option<String>,
     sinks: HashMap<String, SinkState>,
+    devices: HashMap<u32, DeviceState>,
     watched_props: Vec<String>,
 
     // Sinks are pending until either a timer fires or the default sink change event arrives. This
@@ -120,7 +155,11 @@ impl Sinks {
         if let Some((name, sink)) = found {
             Sink {
                 percent: sink.percent,
-                mute: sink.mute,
+                mute: sink
+                    .device_id
+                    .and_then(|id| self.devices.get(&id))
+                    .and_then(|device| device.routes.get(&sink.route_id?))
+                    .map_or(sink.mute, |route| route.muted),
                 down: false,
                 idle: self.default_sink.as_ref() != Some(name),
             }
@@ -158,10 +197,24 @@ impl Sinks {
     }
 
     fn retain_default_sink(&mut self) {
-        if let Some(sink) = self.default_sink.as_ref() {
-            self.sinks.retain(|key, _| key == sink);
-        } else {
+        let Some(sink) = self.default_sink.as_ref() else {
             self.sinks.clear();
+            self.devices.clear();
+            return;
+        };
+        self.sinks.retain(|key, _| key == sink);
+
+        let Some(device_id) = self.sinks.get(sink).and_then(|s| s.device_id) else {
+            self.devices.clear();
+            return;
+        };
+        self.devices.retain(|id, _| *id == device_id);
+    }
+
+    fn clear_device_routes(&mut self, device_id: u32) {
+        if let Some(device) = self.devices.get_mut(&device_id) {
+            device.routes.clear();
+            debug!("PipeWire device #{}: cleared routes", device_id);
         }
     }
 }
@@ -179,13 +232,7 @@ impl Group {
         Self {
             instances: Vec::new(),
             token: None,
-            sinks: Arc::new(RwLock::new(Sinks {
-                default_sink: None,
-                sinks: HashMap::new(),
-                pending_timer: false,
-                pending_remove: HashSet::new(),
-                watched_props: Vec::new(),
-            })),
+            sinks: Arc::new(RwLock::new(Sinks::default())),
         }
     }
 
@@ -230,6 +277,53 @@ impl Group {
         registry.add_listener(RegistryEvents {
             global: some_closure!([registry ^(sinks)] id, _perms, interface, version, props, {
                 match interface {
+                    types::interface::DEVICE => {
+                        if props.get("media.class") != Some("Audio/Device") {
+                            return;
+                        }
+                        let object = registry.bind(id, interface, version).unwrap();
+                        let device = object.downcast::<Device>().unwrap();
+                        device.add_listener(DeviceEvents {
+                            info: Some(Box::new({
+                                let sinks = sinks.clone();
+                                let device = device.downgrade();
+                                let mut route_flags = ParamInfoFlags::empty();
+                                move |info| {
+                                    if !info.mask.contains(DeviceChangeMask::PARAMS) {
+                                        return;
+                                    }
+                                    let flags = info.params.iter()
+                                        .find(|(param, _)| *param == ParamType::Route)
+                                        .map_or(ParamInfoFlags::empty(), |(_, flags)| *flags);
+                                    if flags == route_flags {
+                                        return;
+                                    }
+
+                                    route_flags = flags;
+                                    if !flags.contains(ParamInfoFlags::READ) {
+                                        debug!("PipeWire device #{}: no read bit in flags {:?}", id, flags);
+                                        return;
+                                    }
+
+                                    // Re-enumerate device routes.
+                                    sinks.write().unwrap().clear_device_routes(id);
+                                    device.upgrade().unwrap()
+                                        .enum_params(0, Some(ParamType::Route), 0, u32::MAX, None)
+                                        .expect("Failed to enumerate device routes");
+                                }
+                            })),
+                            param: Some(Box::new({
+                                let sinks = sinks.clone();
+                                move |_, param_type, _, _, pod: &RawPodOwned| {
+                                    if param_type != ParamType::Route {
+                                        return;
+                                    }
+
+                                    update_device_routes(id, pod, &sinks);
+                                }
+                            })),
+                        });
+                    },
                     types::interface::METADATA => {
                         let object = registry.bind(id, interface, version).unwrap();
 
@@ -248,12 +342,6 @@ impl Group {
                                     }
                                 })),
                             }
-                        });
-
-                        let proxy = object.downcast_proxy::<Metadata>().unwrap();
-                        proxy.add_listener(ProxyEvents {
-                            removed: some_closure!([] {}),
-                            ..Default::default()
                         });
                     },
                     types::interface::NODE => {
@@ -299,14 +387,6 @@ impl Group {
                                 }
                             })),
                         });
-
-                        let proxy = object.downcast_proxy::<Node>().unwrap();
-                        proxy.add_listener(
-                            ProxyEvents {
-                                removed: some_closure!([] {}),
-                                ..Default::default()
-                            }
-                        );
                     },
                     _ => {
                         return;
@@ -315,6 +395,10 @@ impl Group {
             }),
             global_remove: some_closure!([^(sinks)] id, {
                 let mut sinks = sinks.write().unwrap();
+                if sinks.devices.remove(&id).is_some() {
+                    debug!("PipeWire device #{}: removed", id);
+                    return;
+                }
                 if sinks.sinks.values().any(|sink| sink.id == id) {
                     sinks.pending_remove.insert(id);
                     debug!("PipeWire node #{}: pending removal", id);
@@ -379,6 +463,48 @@ impl Group {
     }
 }
 
+fn update_device_routes(device_id: u32, pod: &RawPodOwned, sinks: &Arc<RwLock<Sinks>>) {
+    let mut parser = Parser::new(pod.data());
+    let mut profile_device = None;
+    let mut route = None;
+    let result = parser.pop_object_raw(|p, _type, _id: u32| {
+        while let Some((key, _, value)) = p.pop_property()? {
+            match Route::try_from(key) {
+                Ok(Route::Device) => profile_device = Some(value.decode::<i32>()?),
+                Ok(Route::Props) => route = DeviceRoute::parse(value.data())?,
+                _ => {}
+            }
+        }
+        Ok(())
+    });
+
+    if let Err(e) = result {
+        error!("Failed to parse device #{} route: {:?}", device_id, e);
+        return;
+    }
+    let Some(profile_device) = profile_device else {
+        debug!("PipeWire device #{}: no profile device", device_id);
+        return;
+    };
+    let Some(route) = route else {
+        debug!("PipeWire device #{}: no route", device_id);
+        return;
+    };
+
+    debug!(
+        "PipeWire device #{}: profile device {} route {:?}",
+        device_id, profile_device, route
+    );
+    sinks
+        .write()
+        .unwrap()
+        .devices
+        .entry(device_id)
+        .or_default()
+        .routes
+        .insert(profile_device, route);
+}
+
 fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sinks>>) {
     let mut parser = Parser::new(pod.data());
     let mut volume = None;
@@ -413,22 +539,23 @@ fn update_sink_volume(node_name: &str, pod: &RawPodOwned, sinks: &Arc<RwLock<Sin
         error!("Failed to parse volume: {:?}", e);
         return;
     }
-
-    if volume.is_some() || mute.is_some() {
-        let mut sinks = sinks.write().unwrap();
-        let Some(sink) = sinks.sinks.get_mut(node_name) else {
-            debug!("PipeWire node {}: not in the map", node_name);
-            return;
-        };
-        if let Some(v) = volume {
-            sink.percent = Some(v);
-        }
-        if let Some(m) = mute {
-            sink.mute = m;
-        }
-
-        debug!("PipeWire node {}: {:?}", node_name, sink);
+    if volume.is_none() && mute.is_none() {
+        return;
     }
+
+    let mut sinks = sinks.write().unwrap();
+    let Some(sink) = sinks.sinks.get_mut(node_name) else {
+        debug!("PipeWire node {}: not in the map", node_name);
+        return;
+    };
+    if let Some(v) = volume {
+        sink.percent = Some(v);
+    }
+    if let Some(m) = mute {
+        sink.mute = m;
+    }
+
+    debug!("PipeWire node {}: {:?}", node_name, sink);
 }
 
 pub struct Volume {
@@ -516,6 +643,34 @@ impl Block for Volume {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mute_selection() {
+        let device = DeviceState {
+            routes: HashMap::from([(3, DeviceRoute { muted: false })]),
+        };
+        let mut sinks = Sinks {
+            default_sink: Some("speaker".into()),
+            sinks: HashMap::from([(
+                "speaker".into(),
+                SinkState {
+                    mute: true,
+                    device_id: Some(49),
+                    route_id: Some(3),
+                    ..Default::default()
+                },
+            )]),
+            devices: HashMap::from([(49, device)]),
+            ..Default::default()
+        };
+
+        // Prefer the route's mute state when available.
+        assert!(!sinks.find(&HashMap::new()).mute);
+
+        // Otherwise, fall back to the sink's mute state.
+        sinks.clear_device_routes(49);
+        assert!(sinks.find(&HashMap::new()).mute);
+    }
 
     #[test]
     fn pending_sinks() {
