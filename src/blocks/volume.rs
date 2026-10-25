@@ -97,26 +97,40 @@ impl DeviceRoute {
     }
 }
 
+// Sinks are pending until either a timer fires or the default sink gets first set.
+#[derive(Default)]
+struct Pending {
+    timer: bool,
+    default_sink: Option<String>,
+    remove: HashSet<u32>,
+}
+
+impl Pending {
+    /// Returns true if the timer needs to be set.
+    fn set_timer(&mut self, sinks: &HashMap<String, SinkState>) -> bool {
+        self.timer = self.default_sink.is_some()
+            || !self.remove.is_empty()
+            || sinks.values().any(|sink| sink.pending_add);
+        self.timer
+    }
+}
+
 #[derive(Default)]
 struct Sinks {
     default_sink: Option<String>,
     sinks: HashMap<String, SinkState>,
     devices: HashMap<u32, DeviceState>,
     watched_props: Vec<String>,
-
-    // Sinks are pending until either a timer fires or the default sink gets first set.
-    pending_timer: bool,
-    pending_default_sink: Option<String>,
-    pending_remove: HashSet<u32>,
+    pending: Pending,
 }
 
 impl Sinks {
     fn set_default_sink(&mut self, name: Option<String>) {
         if self.default_sink.is_some() {
-            self.pending_default_sink = name;
+            self.pending.default_sink = name;
             debug!(
                 "PipeWire: set pending default sink to {:?}",
-                self.pending_default_sink
+                self.pending.default_sink
             );
         } else {
             self.default_sink = name;
@@ -127,7 +141,7 @@ impl Sinks {
     fn add(&mut self, id: u32, name: String) {
         let sink = self.sinks.entry(name).or_default();
         sink.id = id;
-        sink.pending_add = !self.pending_remove.remove(&id);
+        sink.pending_add = !self.pending.remove.remove(&id);
         debug!(
             "PipeWire node #{}: pending_add = {}",
             sink.id, sink.pending_add
@@ -188,10 +202,7 @@ impl Sinks {
     /// Checks pending sinks and returns a Duration for the next update, or Duration::ZERO if no
     /// update is necessary.
     fn check_pending(&mut self) -> Duration {
-        self.pending_timer = self.pending_default_sink.is_some()
-            || !self.pending_remove.is_empty()
-            || self.sinks.values().any(|sink| sink.pending_add);
-        if self.pending_timer {
+        if self.pending.set_timer(&self.sinks) {
             PENDING_DURATION
         } else {
             Duration::ZERO
@@ -200,11 +211,11 @@ impl Sinks {
 
     /// Applies the pending default, removes pending removals, and makes pending additions visible.
     fn clear_pending(&mut self) {
-        if let Some(name) = self.pending_default_sink.take() {
+        if let Some(name) = self.pending.default_sink.take() {
             self.default_sink = Some(name);
             debug!("PipeWire: set default sink to {:?}", self.default_sink);
         }
-        for id in mem::take(&mut self.pending_remove) {
+        for id in mem::take(&mut self.pending.remove) {
             self.remove(id);
             debug!("PipeWire node #{}: removed", id);
         }
@@ -212,7 +223,7 @@ impl Sinks {
             sink.pending_add = false;
             debug!("PipeWire node #{}: added", sink.id);
         }
-        self.pending_timer = false;
+        self.pending.timer = false;
     }
 
     fn retain_default_sink(&mut self) {
@@ -415,7 +426,7 @@ impl Group {
                     return;
                 }
                 if sinks.sinks.values().any(|sink| sink.id == id) {
-                    sinks.pending_remove.insert(id);
+                    sinks.pending.remove.insert(id);
                     debug!("PipeWire node #{}: pending removal", id);
                 }
             }),
@@ -465,7 +476,7 @@ impl Group {
                         state.mark_all_outputs_block_dirty(dirty);
                     }
 
-                    if sinks.pending_timer {
+                    if sinks.pending.timer {
                         return Ok(calloop::PostAction::Continue);
                     }
                     main_loop
@@ -711,36 +722,30 @@ mod tests {
         sinks.add(1, "speaker".into());
         sinks.set_props("speaker", &props);
         assert!(sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), PENDING_DURATION);
-        assert!(sinks.pending_timer);
-        assert!(sinks.find(&properties).down);
+        assert!(sinks.pending.set_timer(&sinks.sinks));
         sinks.clear_pending();
         assert!(!sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), Duration::ZERO);
-        assert!(!sinks.pending_timer);
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
 
         // Pending removal.
-        sinks.pending_remove.insert(1);
+        sinks.pending.remove.insert(1);
         assert!(!sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), PENDING_DURATION);
-        assert!(sinks.pending_timer);
+        assert!(sinks.pending.set_timer(&sinks.sinks));
 
         // Re-addition keeps the sink.
         sinks.add(1, "speaker".into());
         assert!(!sinks.find(&properties).down);
         assert_eq!(sinks.sinks["speaker"].device_id, Some(49));
         assert_eq!(sinks.sinks["speaker"].route_id, Some(3));
-        assert_eq!(sinks.check_pending(), Duration::ZERO);
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
 
         // Pending removal.
-        sinks.pending_remove.insert(1);
+        sinks.pending.remove.insert(1);
         assert!(!sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), PENDING_DURATION);
-        assert!(sinks.pending_timer);
+        assert!(sinks.pending.set_timer(&sinks.sinks));
         sinks.clear_pending();
         assert!(sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), Duration::ZERO);
-        assert!(!sinks.pending_timer);
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
     }
 
     #[test]
@@ -750,18 +755,15 @@ mod tests {
         // First default sink is set immediately.
         sinks.set_default_sink(Some("speaker".into()));
         assert_eq!(sinks.default_sink.as_deref(), Some("speaker"));
-        assert_eq!(sinks.check_pending(), Duration::ZERO);
-        assert!(!sinks.pending_timer);
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
 
         // Pending default sink change.
         sinks.set_default_sink(Some("headphones".into()));
         assert_eq!(sinks.default_sink.as_deref(), Some("speaker"));
-        assert_eq!(sinks.check_pending(), PENDING_DURATION);
-        assert!(sinks.pending_timer);
+        assert!(sinks.pending.set_timer(&sinks.sinks));
         sinks.clear_pending();
         assert_eq!(sinks.default_sink.as_deref(), Some("headphones"));
-        assert_eq!(sinks.check_pending(), Duration::ZERO);
-        assert!(!sinks.pending_timer);
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
     }
 
     #[test]
