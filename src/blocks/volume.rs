@@ -47,6 +47,8 @@ struct SinkState {
     pending_add: bool,
 }
 
+const PENDING_DURATION: Duration = Duration::from_millis(500);
+
 impl SinkState {
     fn match_props(&self, props: &HashMap<String, String>) -> bool {
         props
@@ -102,21 +104,33 @@ struct Sinks {
     devices: HashMap<u32, DeviceState>,
     watched_props: Vec<String>,
 
-    // Sinks are pending until either a timer fires or the default sink change event arrives. This
-    // avoids flicker caused by a fast-paced sequence of events.
+    // Sinks are pending until either a timer fires or the default sink gets first set.
     pending_timer: bool,
+    pending_default_sink: Option<String>,
     pending_remove: HashSet<u32>,
 }
 
 impl Sinks {
-    fn add(&mut self, id: u32, name: String, props: &Properties) {
+    fn set_default_sink(&mut self, name: Option<String>) {
+        if self.default_sink.is_some() {
+            self.pending_default_sink = name;
+            debug!(
+                "PipeWire: set pending default sink to {:?}",
+                self.pending_default_sink
+            );
+        } else {
+            self.default_sink = name;
+            self.clear_pending();
+        }
+    }
+
+    fn add(&mut self, id: u32, name: String) {
         let sink = self.sinks.entry(name).or_default();
         sink.id = id;
-        sink.pending_add = true;
-        sink.set_props(props, &self.watched_props);
+        sink.pending_add = !self.pending_remove.remove(&id);
         debug!(
-            "PipeWire node #{}: pending addition with properties {:?}",
-            sink.id, sink.props
+            "PipeWire node #{}: pending_add = {}",
+            sink.id, sink.pending_add
         );
     }
 
@@ -174,17 +188,22 @@ impl Sinks {
     /// Checks pending sinks and returns a Duration for the next update, or Duration::ZERO if no
     /// update is necessary.
     fn check_pending(&mut self) -> Duration {
-        self.pending_timer =
-            !self.pending_remove.is_empty() || self.sinks.values().any(|sink| sink.pending_add);
+        self.pending_timer = self.pending_default_sink.is_some()
+            || !self.pending_remove.is_empty()
+            || self.sinks.values().any(|sink| sink.pending_add);
         if self.pending_timer {
-            Duration::from_secs(1)
+            PENDING_DURATION
         } else {
             Duration::ZERO
         }
     }
 
-    /// Removes sinks scheduled for removal, resets pending flags for sinks scheduled for addition.
+    /// Applies the pending default, removes pending removals, and makes pending additions visible.
     fn clear_pending(&mut self) {
+        if let Some(name) = self.pending_default_sink.take() {
+            self.default_sink = Some(name);
+            debug!("PipeWire: set default sink to {:?}", self.default_sink);
+        }
         for id in mem::take(&mut self.pending_remove) {
             self.remove(id);
             debug!("PipeWire node #{}: removed", id);
@@ -334,11 +353,7 @@ impl Group {
                                 property: Some(Box::new(move |_id, key, _type, value| {
                                     if key == Some("default.audio.sink") {
                                         let name = value.and_then(|v| v.split('"').nth(3)).map(|name| name.to_string());
-
-                                        debug!("Default sink = {:?}", name);
-                                        let mut sinks = sinks.write().unwrap();
-                                        sinks.default_sink = name;
-                                        sinks.clear_pending();
+                                        sinks.write().unwrap().set_default_sink(name);
                                     }
                                 })),
                             }
@@ -362,7 +377,7 @@ impl Group {
                             warning!("PipeWire: node {} is internal, its properties may not be displayed correctly", name);
                         }
 
-                        sinks.write().unwrap().add(id, name.clone(), props);
+                        sinks.write().unwrap().add(id, name.clone());
                         let object = registry.bind(id, interface, version).unwrap();
                         let node = object.downcast::<Node>().unwrap();
                         node.subscribe_params(&[ParamType::Props])
@@ -425,10 +440,18 @@ impl Group {
                 move |_, _, state| {
                     // Capture context.
                     let _ = &context;
+                    loop {
+                        match main_loop.iterate(Some(Duration::ZERO)) {
+                            Ok(0) => break,
+                            Ok(_) => continue,
+                            Err(e) => {
+                                error!("PipeWire: loop error {}", e);
+                                break;
+                            }
+                        }
+                    }
 
-                    let _ = main_loop.iterate(Some(Duration::ZERO));
                     let mut sinks = sinks.write().unwrap();
-
                     for i in 0..state.blocks.volume.instances.len() {
                         let dirty = {
                             let instance = &mut state.blocks.volume.instances[i];
@@ -677,17 +700,20 @@ mod tests {
         let properties = HashMap::from([("device.api".into(), "alsa".into())]);
         let mut props = Properties::new();
         props.set("device.api", "alsa".into());
+        props.set("device.id", "49".into());
+        props.set("card.profile.device", "3".into());
         let mut sinks = Sinks {
             watched_props: vec!["device.api".into()],
             ..Default::default()
         };
 
         // Pending addition.
-        sinks.add(1, "speaker".into(), &props);
+        sinks.add(1, "speaker".into());
+        sinks.set_props("speaker", &props);
         assert!(sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), Duration::from_secs(1));
+        assert_eq!(sinks.check_pending(), PENDING_DURATION);
         assert!(sinks.pending_timer);
-
+        assert!(sinks.find(&properties).down);
         sinks.clear_pending();
         assert!(!sinks.find(&properties).down);
         assert_eq!(sinks.check_pending(), Duration::ZERO);
@@ -696,11 +722,44 @@ mod tests {
         // Pending removal.
         sinks.pending_remove.insert(1);
         assert!(!sinks.find(&properties).down);
-        assert_eq!(sinks.check_pending(), Duration::from_secs(1));
+        assert_eq!(sinks.check_pending(), PENDING_DURATION);
         assert!(sinks.pending_timer);
 
+        // Re-addition keeps the sink.
+        sinks.add(1, "speaker".into());
+        assert!(!sinks.find(&properties).down);
+        assert_eq!(sinks.sinks["speaker"].device_id, Some(49));
+        assert_eq!(sinks.sinks["speaker"].route_id, Some(3));
+        assert_eq!(sinks.check_pending(), Duration::ZERO);
+
+        // Pending removal.
+        sinks.pending_remove.insert(1);
+        assert!(!sinks.find(&properties).down);
+        assert_eq!(sinks.check_pending(), PENDING_DURATION);
+        assert!(sinks.pending_timer);
         sinks.clear_pending();
         assert!(sinks.find(&properties).down);
+        assert_eq!(sinks.check_pending(), Duration::ZERO);
+        assert!(!sinks.pending_timer);
+    }
+
+    #[test]
+    fn pending_default_sink() {
+        let mut sinks = Sinks::default();
+
+        // First default sink is set immediately.
+        sinks.set_default_sink(Some("speaker".into()));
+        assert_eq!(sinks.default_sink.as_deref(), Some("speaker"));
+        assert_eq!(sinks.check_pending(), Duration::ZERO);
+        assert!(!sinks.pending_timer);
+
+        // Pending default sink change.
+        sinks.set_default_sink(Some("headphones".into()));
+        assert_eq!(sinks.default_sink.as_deref(), Some("speaker"));
+        assert_eq!(sinks.check_pending(), PENDING_DURATION);
+        assert!(sinks.pending_timer);
+        sinks.clear_pending();
+        assert_eq!(sinks.default_sink.as_deref(), Some("headphones"));
         assert_eq!(sinks.check_pending(), Duration::ZERO);
         assert!(!sinks.pending_timer);
     }

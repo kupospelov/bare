@@ -18,10 +18,16 @@ pub fn set(level: Level) {
     let _ = LEVEL.set(level);
 }
 
+pub fn timestamp() -> String {
+    tz::UtcDateTime::now()
+        .map(|time| time.to_string())
+        .unwrap_or_else(|_| "[timestamp unavailable]".into())
+}
+
 #[macro_export]
 macro_rules! fail {
     ($($arg:tt)*) => {{
-        eprintln!($($arg)*);
+        $crate::error!($($arg)*);
         std::process::exit(1);
     }};
 }
@@ -30,7 +36,7 @@ macro_rules! fail {
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {
         if $level >= $crate::log::get() {
-            eprintln!("[{:?}] {}", $level, format_args!($($arg)*));
+            eprintln!("{} [{:?}] {}", $crate::log::timestamp(), $level, format_args!($($arg)*));
         }
     };
 }
