@@ -47,6 +47,7 @@ struct SinkState {
     pending_add: bool,
 }
 
+const DUMMY_SINK: &str = "auto_null";
 const PENDING_DURATION: Duration = Duration::from_millis(500);
 
 impl SinkState {
@@ -126,6 +127,7 @@ struct Sinks {
 
 impl Sinks {
     fn set_default_sink(&mut self, name: Option<String>) {
+        let name = name.filter(|name| name != DUMMY_SINK);
         if self.default_sink.is_some() {
             self.pending.default_sink = name;
             debug!(
@@ -375,6 +377,10 @@ impl Group {
                             warning!("PipeWire: node does not have a name");
                             return;
                         };
+                        if name == DUMMY_SINK {
+                            debug!("PipeWire: skipped dummy sink");
+                            return;
+                        }
                         let Some(class) = props.get("media.class") else {
                             debug!("PipeWire: node {} does not have a class", name);
                             return;
@@ -751,6 +757,11 @@ mod tests {
     #[test]
     fn pending_default_sink() {
         let mut sinks = Sinks::default();
+
+        // The dummy sink leaves the default unset.
+        sinks.set_default_sink(Some("auto_null".into()));
+        assert!(sinks.default_sink.is_none());
+        assert!(!sinks.pending.set_timer(&sinks.sinks));
 
         // First default sink is set immediately.
         sinks.set_default_sink(Some("speaker".into()));
