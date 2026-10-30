@@ -1,6 +1,7 @@
 pub mod battery;
 pub mod cpu;
 pub mod file;
+pub mod memory;
 pub mod time;
 pub mod volume;
 pub mod wireless;
@@ -8,8 +9,8 @@ pub mod workspaces;
 
 use crate::{
     config::{
-        BatteryConfig, BlockConfig, ColorConfig, Config, CpuConfig, TimeConfig, VolumeConfig,
-        WirelessConfig,
+        BatteryConfig, BlockConfig, ColorConfig, Config, CpuConfig, MemoryConfig, TimeConfig,
+        VolumeConfig, WirelessConfig,
     },
     raster::Rasterizer,
     render,
@@ -61,6 +62,7 @@ pub enum Instance {
     Volume(usize),
     Wireless(usize),
     Cpu(usize),
+    Memory(usize),
     File(usize),
 }
 
@@ -77,6 +79,7 @@ pub struct Blocks {
     pub volume: volume::Group,
     pub wireless: wireless::Group,
     pub cpu: cpu::Group,
+    pub memory: memory::Group,
     pub file: file::Group,
 }
 
@@ -89,6 +92,7 @@ impl Blocks {
             volume: volume::Group::new(),
             wireless: wireless::Group::new(),
             cpu: cpu::Group::new(),
+            memory: memory::Group::new(),
             file: file::Group::new(),
         };
 
@@ -140,6 +144,14 @@ impl Blocks {
                         .unwrap_or_else(|| CpuConfig::default(&config.bar.color));
                     blocks.order.push(blocks.cpu.add(i, &cfg));
                 }
+                "memory" => {
+                    let cfg = config
+                        .memory
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| MemoryConfig::default(&config.bar.color));
+                    blocks.order.push(blocks.memory.add(i, &cfg));
+                }
                 "file" => {
                     let cfg = config.file.get(name).unwrap_or_else(|| {
                         panic!(
@@ -166,6 +178,7 @@ impl Blocks {
             Instance::Volume(j) => &self.volume.instances[j],
             Instance::Wireless(j) => &self.wireless.instances[j],
             Instance::Cpu(j) => &self.cpu.instances[j],
+            Instance::Memory(j) => &self.memory.instances[j],
             Instance::File(j) => &self.file.instances[j],
         }
     }

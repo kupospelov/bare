@@ -219,6 +219,7 @@ impl State {
     fn update_interval_blocks(&mut self) {
         let mut dirty = Vec::new();
         self.blocks.cpu.update(&mut dirty);
+        self.blocks.memory.update(&mut dirty);
         self.blocks.wireless.update(&mut dirty);
         self.blocks.battery.update(&mut dirty);
         self.blocks.file.update(&mut dirty);

@@ -88,20 +88,19 @@ impl Cpu {
         let diff_total = event.total.saturating_sub(self.total) as f64;
         let value = 100.0 * diff_idle / diff_total;
         let usage = 100 - value.round().clamp(0.0, 100.0) as u8;
-
         self.idle = event.idle;
         self.total = event.total;
-        if usage != self.usage {
-            debug!("Updated CPU usage: {:?}", usage);
-            let high = self.is_high();
-            self.usage = usage;
-            Some(BlockDirty {
-                index: self.id,
-                layout: high != self.is_high(),
-            })
-        } else {
-            None
+        if usage == self.usage {
+            return None;
         }
+
+        debug!("Updated CPU usage: {:?}", usage);
+        let high = self.is_high();
+        self.usage = usage;
+        Some(BlockDirty {
+            index: self.id,
+            layout: high != self.is_high(),
+        })
     }
 
     fn is_high(&self) -> bool {

@@ -20,6 +20,7 @@ pub struct Config {
     pub battery: HashMap<String, BatteryConfig>,
     pub time: HashMap<String, TimeConfig>,
     pub cpu: HashMap<String, CpuConfig>,
+    pub memory: HashMap<String, MemoryConfig>,
     pub file: HashMap<String, FileConfig>,
 }
 
@@ -520,6 +521,65 @@ impl FormatItem for CpuFormatItem {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MemoryConfig {
+    pub block: BlockConfig,
+    pub color: ColorConfig,
+    pub format: Vec<MemoryFormatItem>,
+    pub high: ThresholdStateConfig<MemoryFormatItem>,
+}
+
+impl MemoryConfig {
+    pub(crate) fn default(color: &ColorConfig) -> Self {
+        let format = vec![
+            MemoryFormatItem::Label("MEM".into()),
+            MemoryFormatItem::Usage,
+        ];
+
+        Self {
+            block: BlockConfig::default(),
+            color: color.clone(),
+            format: format.clone(),
+            high: ThresholdStateConfig {
+                state: StateConfig {
+                    color: ColorConfig {
+                        text: BAD,
+                        ..*color
+                    },
+                    format,
+                },
+                threshold: 80,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(from = "String")]
+pub enum MemoryFormatItem {
+    Usage,
+    Label(String),
+}
+
+impl From<String> for MemoryFormatItem {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "[usage]" => Self::Usage,
+            _ => Self::Label(s),
+        }
+    }
+}
+
+impl FormatItem for MemoryFormatItem {
+    fn label(&self) -> Option<&str> {
+        if let MemoryFormatItem::Label(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileConfig {
     pub path: PathBuf,
     pub block: BlockConfig,
@@ -563,6 +623,7 @@ impl Default for Config {
             battery: HashMap::new(),
             time: HashMap::new(),
             cpu: HashMap::new(),
+            memory: HashMap::new(),
             file: HashMap::new(),
         }
     }
@@ -872,6 +933,19 @@ impl Visit for CpuConfig {
     }
 }
 
+impl Visit for MemoryConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.block.visit(&mut toml);
+
+        toml.get("format").set(&mut self.format);
+        self.high.state.format.clone_from(&self.format);
+
+        toml.get("color").visit(&mut self.color);
+        toml.get("high").visit(&mut self.high);
+        toml.empty();
+    }
+}
+
 impl Visit for FileConfig {
     fn visit(&mut self, mut toml: Toml) {
         self.block.visit(&mut toml);
@@ -894,6 +968,11 @@ impl Visit for Config {
         toml.get("bar").set(&mut self.bar);
         toml.get("workspace").visit(&mut self.workspace);
         toml.merge("cpu", &mut self.cpu, CpuConfig::default(&self.bar.color));
+        toml.merge(
+            "memory",
+            &mut self.memory,
+            MemoryConfig::default(&self.bar.color),
+        );
         toml.merge(
             "wireless",
             &mut self.wireless,
@@ -966,6 +1045,7 @@ mod tests {
 
         // Maps are not auto-populated.
         assert_eq!(config.cpu.len(), 0);
+        assert_eq!(config.memory.len(), 0);
         assert_eq!(config.wireless.len(), 0);
         assert_eq!(config.volume.len(), 0);
         assert_eq!(config.battery.len(), 0);
@@ -986,6 +1066,7 @@ mod tests {
             "[bar]",
             "[workspace]",
             "[cpu.0]",
+            "[memory.0]",
             "[wireless.0]",
             "[volume.0]",
             "[battery.0]",
@@ -993,6 +1074,7 @@ mod tests {
             "[bar.color]",
             "[workspace.active]",
             "[cpu.0.high]",
+            "[memory.0.high]",
         ];
 
         for section in sections {
@@ -1081,6 +1163,58 @@ mod tests {
         .unwrap();
 
         let c = config.cpu.get("0").unwrap();
+        assert_eq!(c.block.margins, [1, 2, 3, 4]);
+        assert_eq!(c.block.borders, [0, 0, 0, 0]);
+        assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(c.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(c.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(c.high.threshold, 90);
+        assert_eq!(c.high.state.color.text, Color::rgb(0x12, 0x34, 0x56));
+        assert_eq!(c.high.state.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(c.high.state.color.border, Color::rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn memory_defaults() {
+        let config: Config = toml::from_str("[memory.0]").unwrap();
+
+        let m = config.memory.get("0").unwrap();
+        assert_eq!(m.block.height, 0);
+        assert_eq!(m.block.borders, [0, 0, 0, 0]);
+        assert_eq!(m.block.margins, [0, 0, 0, 0]);
+        assert_eq!(m.color, config.bar.color);
+        assert_eq!(
+            m.format,
+            [
+                MemoryFormatItem::Label("MEM".into()),
+                MemoryFormatItem::Usage
+            ]
+        );
+        assert_eq!(m.high.threshold, 80);
+        assert_eq!(m.high.state.format, m.format);
+        assert_eq!(m.high.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
+        assert_eq!(m.high.state.color.background, m.color.background);
+        assert_eq!(m.high.state.color.border, m.color.border);
+    }
+
+    #[test]
+    fn memory_partial_override() {
+        let config: Config = toml::from_str(
+            r###"
+            [memory.0]
+            margins = [1, 2, 3, 4]
+
+            [memory.0.high]
+            threshold = 90
+            color.text = "#123456"
+
+            [memory.0.color]
+            background = "#aabbcc"
+            "###,
+        )
+        .unwrap();
+
+        let c = config.memory.get("0").unwrap();
         assert_eq!(c.block.margins, [1, 2, 3, 4]);
         assert_eq!(c.block.borders, [0, 0, 0, 0]);
         assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -1628,6 +1762,50 @@ mod tests {
         assert_eq!(
             c2.high.state.format,
             vec![CpuFormatItem::Label("high2".into()), CpuFormatItem::Usage,]
+        );
+    }
+
+    #[test]
+    fn memory_state_format() {
+        let config: Config = toml::from_str(
+            r###"
+            [memory.0]
+            format = ["[usage]", "hello0"]
+
+            [memory.1]
+            format = ["[usage]", "hello1"]
+
+            [memory.2]
+            format = ["[usage]", "hello2"]
+
+            [memory.0.high]
+            threshold = 90
+
+            [memory.1.high]
+            format = []
+
+            [memory.2.high]
+            format = ["high2", "[usage]"]
+            "###,
+        )
+        .unwrap();
+
+        // Inherited
+        let c0 = config.memory.get("0").unwrap();
+        assert_eq!(c0.high.state.format, c0.format);
+
+        // Empty override
+        let c1 = config.memory.get("1").unwrap();
+        assert_eq!(c1.high.state.format, vec![]);
+
+        // Override
+        let c2 = config.memory.get("2").unwrap();
+        assert_eq!(
+            c2.high.state.format,
+            vec![
+                MemoryFormatItem::Label("high2".into()),
+                MemoryFormatItem::Usage,
+            ]
         );
     }
 
