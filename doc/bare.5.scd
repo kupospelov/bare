@@ -62,9 +62,9 @@ states. Each state defines a color section. See *COLORS* for more information.
 # BLOCKS
 
 Blocks are configured as named instances of a block type. The available types
-are *cpu*, *memory*, *wireless*, *volume*, *battery*, *time*, and *file*.
-Instances are defined in *\[type.<name>\]* sections and referenced in the
-*\[bar.blocks\]*.
+are *cpu*, *memory*, *drive*, *wireless*, *volume*, *battery*, *time*, and
+*file*. Instances are defined in *\[type.<name>\]* sections and referenced in
+the *\[bar.blocks\]*.
 
 Each block section accepts options described in *BOX MODEL*, a *color* section
 described in *COLORS*, and a *format* option specific to the block type.
@@ -119,6 +119,32 @@ format that defaults to the regular block format.
 
 	*high.threshold*=_threshold_
 		High memory usage threshold.
+
+		Default: 80
+
+## Drive
+
+	Display the mounted filesystem status.
+
+	*path*=_path_
+		Mount path.
+
+		Default: "/"
+
+	*format*=_\[token, ...\]_
+
+		Default: \["DRV", "\[usage\]"\]
+
+		The following placeholders are recognized:
+
+		*\[usage\]*
+			Usage percentage, rounded upward as in *df*.
+
+	The drive has the *high* state. The state defines a color section, e.g.
+	*\[high.color\]*. See *COLORS* for more information.
+
+	*high.threshold*=_threshold_
+		High drive usage threshold.
 
 		Default: 80
 
@@ -326,6 +352,10 @@ The default colors are:
 :[ _inherited_
 :[ _inherited_
 |[ *\[memory.<name>.high.color\]*
+:[ #dca3a3
+:[ _inherited_
+:[ _inherited_
+|[ *\[drive.<name>.high.color\]*
 :[ #dca3a3
 :[ _inherited_
 :[ _inherited_
