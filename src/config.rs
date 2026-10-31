@@ -1413,7 +1413,7 @@ mod tests {
             r###"
             [time.0]
             margins = [1, 2, 3, 4]
-            timezone = "US/Pacific"
+            timezone = "America/Los_Angeles"
             weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 
             [time.0.color]
@@ -1425,7 +1425,7 @@ mod tests {
         let t = config.time.get("0").unwrap();
         assert_eq!(
             t.timezone,
-            tz::TimeZone::from_posix_tz("US/Pacific").unwrap()
+            tz::TimeZone::from_posix_tz("America/Los_Angeles").unwrap()
         );
         assert_eq!(t.block.margins, [1, 2, 3, 4]);
         assert_eq!(t.weekdays, ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
