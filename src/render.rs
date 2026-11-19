@@ -497,6 +497,7 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::tests::{parse_config, parse_instances};
     use crate::raster::Bitmap;
     use pretty_assertions::assert_eq;
 
@@ -527,13 +528,7 @@ mod tests {
     }
 
     fn make_renderer() -> Renderer {
-        let config: Config = toml::from_str(
-            r###"
-            [bar]
-            fonts = "Sans Bold 10px"
-            "###,
-        )
-        .unwrap();
+        let config = parse_config("[bar]\nfonts = 'Sans Bold 10px'");
         Renderer::new(&config)
     }
 
@@ -674,7 +669,9 @@ mod tests {
         const SCALE: i32 = 1;
         const SEPARATOR: u32 = 15;
 
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [bar]
             fonts = "Sans 10px"
@@ -694,12 +691,10 @@ mod tests {
             borders = [2, 2, 2, 2]
             color.background = "#00ff00"
             "###,
-        )
-        .unwrap();
-
+        );
         let mut renderer = Renderer::new(&config);
         let mut workspaces = Workspaces::new(&config.workspace, renderer.font_size);
-        let mut blocks = Blocks::new(&config);
+        let mut blocks = Blocks::new(&config, &instances);
         let layout = blocks.layout(&renderer.rasterizer, SCALE, SEPARATOR);
         let font_height = renderer.rasterizer.get_default_font_size(SCALE) as i32;
 

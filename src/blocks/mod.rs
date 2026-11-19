@@ -10,8 +10,8 @@ pub mod workspaces;
 
 use crate::{
     config::{
-        BatteryConfig, BlockConfig, ColorConfig, Config, CpuConfig, DriveConfig, MemoryConfig,
-        TimeConfig, VolumeConfig, WirelessConfig,
+        BatteryConfig, BlockConfig, ColorConfig, Config, CpuConfig, DriveConfig, InstanceConfig,
+        MemoryConfig, TimeConfig, VolumeConfig, WirelessConfig,
     },
     raster::Rasterizer,
     render,
@@ -87,7 +87,7 @@ pub struct Blocks {
 }
 
 impl Blocks {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &Config, instances: &InstanceConfig) -> Self {
         let mut blocks = Self {
             order: Vec::with_capacity(config.bar.blocks.len()),
             time: time::Group::new(),
@@ -109,7 +109,7 @@ impl Blocks {
             });
             match kind {
                 "time" => {
-                    let cfg = config
+                    let cfg = instances
                         .time
                         .get(name)
                         .cloned()
@@ -117,7 +117,7 @@ impl Blocks {
                     blocks.order.push(blocks.time.add(i, &cfg));
                 }
                 "battery" => {
-                    let cfg = config
+                    let cfg = instances
                         .battery
                         .get(name)
                         .cloned()
@@ -125,7 +125,7 @@ impl Blocks {
                     blocks.order.push(blocks.battery.add(i, &cfg));
                 }
                 "volume" => {
-                    let cfg = config
+                    let cfg = instances
                         .volume
                         .get(name)
                         .cloned()
@@ -133,7 +133,7 @@ impl Blocks {
                     blocks.order.push(blocks.volume.add(i, &cfg));
                 }
                 "wireless" => {
-                    let cfg = config
+                    let cfg = instances
                         .wireless
                         .get(name)
                         .cloned()
@@ -141,7 +141,7 @@ impl Blocks {
                     blocks.order.push(blocks.wireless.add(i, &cfg));
                 }
                 "cpu" => {
-                    let cfg = config
+                    let cfg = instances
                         .cpu
                         .get(name)
                         .cloned()
@@ -149,7 +149,7 @@ impl Blocks {
                     blocks.order.push(blocks.cpu.add(i, &cfg));
                 }
                 "memory" => {
-                    let cfg = config
+                    let cfg = instances
                         .memory
                         .get(name)
                         .cloned()
@@ -157,7 +157,7 @@ impl Blocks {
                     blocks.order.push(blocks.memory.add(i, &cfg));
                 }
                 "drive" => {
-                    let cfg = config
+                    let cfg = instances
                         .drive
                         .get(name)
                         .cloned()
@@ -165,7 +165,7 @@ impl Blocks {
                     blocks.order.push(blocks.drive.add(i, &cfg));
                 }
                 "file" => {
-                    let cfg = config.file.get(name).unwrap_or_else(|| {
+                    let cfg = instances.file.get(name).unwrap_or_else(|| {
                         panic!(
                             "Missing configuration for '{}': file.path is required",
                             entry
@@ -261,18 +261,18 @@ mod tests {
     #[test]
     #[should_panic(expected = "Invalid bar.blocks entry 'noname'")]
     fn missing_block_separator_panics() {
-        Blocks::new(&block("noname"));
+        Blocks::new(&block("noname"), &InstanceConfig::default());
     }
 
     #[test]
     #[should_panic(expected = "Unknown block type 'unknown' in bar.blocks entry 'unknown.default'")]
     fn unknown_block_type_panics() {
-        Blocks::new(&block("unknown.default"));
+        Blocks::new(&block("unknown.default"), &InstanceConfig::default());
     }
 
     #[test]
     #[should_panic(expected = "Missing configuration for 'file.missing': file.path is required")]
     fn unconfigured_file_path_panics() {
-        Blocks::new(&block("file.missing"));
+        Blocks::new(&block("file.missing"), &InstanceConfig::default());
     }
 }

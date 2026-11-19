@@ -1,5 +1,5 @@
 use crate::blocks::{BlockDirty, Blocks};
-use crate::config::Config;
+use crate::config::{Config, InstanceConfig};
 use crate::init::Init;
 use crate::render::Renderer;
 use crate::wayland::output::Output;
@@ -63,9 +63,14 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(config: Config, qh: QueueHandle<State>, init: Init) -> Self {
+    pub fn new(
+        config: Config,
+        instances: InstanceConfig,
+        qh: QueueHandle<State>,
+        init: Init,
+    ) -> Self {
         let renderer = Renderer::new(&config);
-        let blocks = Blocks::new(&config);
+        let blocks = Blocks::new(&config, &instances);
         Self {
             config,
             qh,

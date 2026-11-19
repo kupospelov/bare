@@ -10,11 +10,14 @@ const GOOD: Color = Color::rgb(0x60, 0xb4, 0x8a);
 const DEGRADED: Color = Color::rgb(0xdf, 0xaf, 0x8f);
 const BAD: Color = Color::rgb(0xdc, 0xa3, 0xa3);
 
-#[derive(Debug, Deserialize)]
-#[serde(from = "toml::Table")]
+#[derive(Debug)]
 pub struct Config {
     pub bar: BarConfig,
     pub workspace: WorkspaceConfig,
+}
+
+#[derive(Debug, Default)]
+pub struct InstanceConfig {
     pub wireless: HashMap<String, WirelessConfig>,
     pub volume: HashMap<String, VolumeConfig>,
     pub battery: HashMap<String, BatteryConfig>,
@@ -677,32 +680,24 @@ impl Default for Config {
         Self {
             bar: BarConfig::default(),
             workspace: WorkspaceConfig::default(),
-            wireless: HashMap::new(),
-            volume: HashMap::new(),
-            battery: HashMap::new(),
-            time: HashMap::new(),
-            cpu: HashMap::new(),
-            memory: HashMap::new(),
-            drive: HashMap::new(),
-            file: HashMap::new(),
         }
     }
 }
 
 impl Config {
-    pub fn load() -> Self {
-        Self::from_dir(&default_config_path())
+    pub fn load(&mut self) -> InstanceConfig {
+        self.load_dir(&default_config_path())
     }
 
-    pub fn from_file(path: PathBuf) -> Self {
+    pub fn load_file(&mut self, path: PathBuf) -> InstanceConfig {
         let Some(toml) = load_toml(&path) else {
             fail!("{} not found", path.display());
         };
 
-        toml.into()
+        self.parse(toml)
     }
 
-    fn from_dir(path: &Path) -> Self {
+    fn load_dir(&mut self, path: &Path) -> InstanceConfig {
         let mut toml = load_toml(&path.join("config.toml")).unwrap_or_default();
 
         for p in config_paths(&path.join("conf.d")) {
@@ -714,7 +709,7 @@ impl Config {
             merge_toml(&mut toml, c);
         }
 
-        toml.into()
+        self.parse(toml)
     }
 }
 
@@ -1037,47 +1032,54 @@ impl Visit for FileConfig {
     }
 }
 
-impl Visit for Config {
-    fn visit(&mut self, mut toml: Toml) {
+impl Config {
+    pub fn parse(&mut self, table: toml::Table) -> InstanceConfig {
+        let mut toml = Toml::new(table);
+        let mut instances = InstanceConfig::default();
         toml.get("bar").set(&mut self.bar);
         toml.get("workspace").visit(&mut self.workspace);
-        toml.merge("cpu", &mut self.cpu, CpuConfig::default(&self.bar.color));
+        toml.merge(
+            "cpu",
+            &mut instances.cpu,
+            CpuConfig::default(&self.bar.color),
+        );
         toml.merge(
             "memory",
-            &mut self.memory,
+            &mut instances.memory,
             MemoryConfig::default(&self.bar.color),
         );
         toml.merge(
             "drive",
-            &mut self.drive,
+            &mut instances.drive,
             DriveConfig::default(&self.bar.color),
         );
         toml.merge(
             "wireless",
-            &mut self.wireless,
+            &mut instances.wireless,
             WirelessConfig::default(&self.bar.color),
         );
         toml.merge(
             "volume",
-            &mut self.volume,
+            &mut instances.volume,
             VolumeConfig::default(&self.bar.color),
         );
         toml.merge(
             "battery",
-            &mut self.battery,
+            &mut instances.battery,
             BatteryConfig::default(&self.bar.color),
         );
-        toml.merge("time", &mut self.time, TimeConfig::default(&self.bar.color));
-        toml.merge("file", &mut self.file, FileConfig::default(&self.bar.color));
+        toml.merge(
+            "time",
+            &mut instances.time,
+            TimeConfig::default(&self.bar.color),
+        );
+        toml.merge(
+            "file",
+            &mut instances.file,
+            FileConfig::default(&self.bar.color),
+        );
         toml.empty();
-    }
-}
-
-impl From<toml::Table> for Config {
-    fn from(table: toml::Table) -> Self {
-        let mut config = Self::default();
-        config.visit(Toml::new(table));
-        config
+        instances
     }
 }
 
@@ -1089,14 +1091,25 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::tests::tmp::Directory;
 
     use super::*;
 
+    pub(crate) fn parse_config(input: &str) -> Config {
+        let mut config = Config::default();
+        parse_instances(&mut config, input);
+        config
+    }
+
+    pub(crate) fn parse_instances(config: &mut Config, input: &str) -> InstanceConfig {
+        config.parse(toml::from_str(input).unwrap())
+    }
+
     #[test]
     fn block_defaults() {
-        let config: Config = toml::from_str("").unwrap();
+        let mut config = Config::default();
+        let instances = parse_instances(&mut config, "");
 
         let b = config.bar;
         assert_eq!(b.width, 28);
@@ -1123,19 +1136,18 @@ mod tests {
         assert_eq!(w.urgent.color.border, Color::rgb(0x99, 0x4c, 0x4c));
 
         // Maps are not auto-populated.
-        assert_eq!(config.cpu.len(), 0);
-        assert_eq!(config.memory.len(), 0);
-        assert_eq!(config.drive.len(), 0);
-        assert_eq!(config.wireless.len(), 0);
-        assert_eq!(config.volume.len(), 0);
-        assert_eq!(config.battery.len(), 0);
-        assert_eq!(config.time.len(), 0);
+        assert_eq!(instances.cpu.len(), 0);
+        assert_eq!(instances.memory.len(), 0);
+        assert_eq!(instances.drive.len(), 0);
+        assert_eq!(instances.wireless.len(), 0);
+        assert_eq!(instances.volume.len(), 0);
+        assert_eq!(instances.battery.len(), 0);
+        assert_eq!(instances.time.len(), 0);
     }
 
     #[test]
     fn panics_on_unknown_root_field() {
-        let result =
-            std::panic::catch_unwind(|| toml::from_str::<Config>("unexpected = true").unwrap());
+        let result = std::panic::catch_unwind(|| parse_config("unexpected = true"));
 
         assert!(result.is_err());
     }
@@ -1160,7 +1172,7 @@ mod tests {
 
         for section in sections {
             let input = format!("{section}\nunexpected = true");
-            let result = std::panic::catch_unwind(|| toml::from_str::<Config>(&input).unwrap());
+            let result = std::panic::catch_unwind(|| parse_config(&input));
 
             assert!(result.is_err(), "{} accepted an unknown field", section);
         }
@@ -1169,13 +1181,12 @@ mod tests {
     #[test]
     fn panics_on_invalid_nested_value() {
         let result = std::panic::catch_unwind(|| {
-            toml::from_str::<Config>(
+            parse_config(
                 r###"
                 [cpu.0.color]
                 text = 1
                 "###,
             )
-            .unwrap()
         });
 
         assert!(result.is_err());
@@ -1183,7 +1194,7 @@ mod tests {
 
     #[test]
     fn bar_partial_override() {
-        let config: Config = toml::from_str(
+        let config = parse_config(
             r###"
             [bar]
             fonts = "Monospace 10"
@@ -1192,8 +1203,7 @@ mod tests {
             [bar.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
         let b = config.bar;
         assert_eq!(b.fonts, "Monospace 10");
@@ -1205,7 +1215,7 @@ mod tests {
 
     #[test]
     fn workspace_partial_override() {
-        let config: Config = toml::from_str(
+        let config = parse_config(
             r###"
             [workspace]
             margins = [10, 20, 30, 40]
@@ -1214,8 +1224,7 @@ mod tests {
             [workspace.inactive.color]
             background = "#112233"
             "###,
-        )
-        .unwrap();
+        );
 
         let w = config.workspace;
         assert_eq!(w.block.borders, [1, 1, 1, 1]);
@@ -1228,7 +1237,9 @@ mod tests {
 
     #[test]
     fn cpu_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [cpu.0]
             margins = [1, 2, 3, 4]
@@ -1240,10 +1251,9 @@ mod tests {
             [cpu.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let c = config.cpu.get("0").unwrap();
+        let c = instances.cpu.get("0").unwrap();
         assert_eq!(c.block.margins, [1, 2, 3, 4]);
         assert_eq!(c.block.borders, [0, 0, 0, 0]);
         assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -1257,9 +1267,10 @@ mod tests {
 
     #[test]
     fn memory_defaults() {
-        let config: Config = toml::from_str("[memory.0]").unwrap();
+        let mut config = Config::default();
+        let instances = parse_instances(&mut config, "[memory.0]");
 
-        let m = config.memory.get("0").unwrap();
+        let m = instances.memory.get("0").unwrap();
         assert_eq!(m.block.height, 0);
         assert_eq!(m.block.borders, [0, 0, 0, 0]);
         assert_eq!(m.block.margins, [0, 0, 0, 0]);
@@ -1280,7 +1291,9 @@ mod tests {
 
     #[test]
     fn memory_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [memory.0]
             margins = [1, 2, 3, 4]
@@ -1292,10 +1305,9 @@ mod tests {
             [memory.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let c = config.memory.get("0").unwrap();
+        let c = instances.memory.get("0").unwrap();
         assert_eq!(c.block.margins, [1, 2, 3, 4]);
         assert_eq!(c.block.borders, [0, 0, 0, 0]);
         assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
@@ -1309,9 +1321,10 @@ mod tests {
 
     #[test]
     fn drive_defaults() {
-        let config: Config = toml::from_str("[drive.0]").unwrap();
+        let mut config = Config::default();
+        let instances = parse_instances(&mut config, "[drive.0]");
 
-        let c = config.drive.get("0").unwrap();
+        let c = instances.drive.get("0").unwrap();
         assert_eq!(c.path, PathBuf::from("/"));
         assert_eq!(c.block.height, 0);
         assert_eq!(c.block.borders, [0, 0, 0, 0]);
@@ -1330,7 +1343,9 @@ mod tests {
 
     #[test]
     fn drive_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [drive.0]
             path = "/home"
@@ -1343,10 +1358,9 @@ mod tests {
             [drive.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let c = config.drive.get("0").unwrap();
+        let c = instances.drive.get("0").unwrap();
         assert_eq!(c.path, PathBuf::from("/home"));
         assert_eq!(c.block.margins, [1, 2, 3, 4]);
         assert_eq!(c.block.borders, [0, 0, 0, 0]);
@@ -1361,7 +1375,9 @@ mod tests {
 
     #[test]
     fn volume_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [volume.0]
             margins = [1, 2, 3, 4]
@@ -1369,10 +1385,9 @@ mod tests {
             [volume.0.muted.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let v = config.volume.get("0").unwrap();
+        let v = instances.volume.get("0").unwrap();
         assert_eq!(v.block.margins, [1, 2, 3, 4]);
         assert_eq!(v.block.borders, [0, 0, 0, 0]);
         assert_eq!(v.muted.color.text, Color::rgb(0xdf, 0xaf, 0x8f));
@@ -1382,14 +1397,15 @@ mod tests {
 
     #[test]
     fn battery_defaults() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [battery.0]
             "###,
-        )
-        .unwrap();
+        );
 
-        let b = config.battery.get("0").unwrap();
+        let b = instances.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT0/uevent"));
         assert_eq!(b.block.height, 0);
         assert_eq!(b.block.borders, [0, 0, 0, 0]);
@@ -1423,7 +1439,9 @@ mod tests {
 
     #[test]
     fn battery_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [battery.0]
             path = "/sys/class/power_supply/BAT1/uevent"
@@ -1441,10 +1459,9 @@ mod tests {
             [battery.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let b = config.battery.get("0").unwrap();
+        let b = instances.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT1/uevent"));
         assert!(b.design_capacity);
         assert_eq!(b.block.height, 0);
@@ -1465,14 +1482,15 @@ mod tests {
 
     #[test]
     fn wireless_defaults() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [wireless.0]
             "###,
-        )
-        .unwrap();
+        );
 
-        let w = config.wireless.get("0").unwrap();
+        let w = instances.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlan0");
         assert_eq!(w.block.height, 0);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
@@ -1502,7 +1520,9 @@ mod tests {
 
     #[test]
     fn wireless_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [wireless.0]
             interface = "wlp3s0"
@@ -1519,10 +1539,9 @@ mod tests {
             [wireless.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let w = config.wireless.get("0").unwrap();
+        let w = instances.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlp3s0");
         assert_eq!(w.block.height, 0);
         assert_eq!(w.block.borders, [0, 0, 0, 0]);
@@ -1542,7 +1561,9 @@ mod tests {
 
     #[test]
     fn time_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [time.0]
             margins = [1, 2, 3, 4]
@@ -1552,10 +1573,9 @@ mod tests {
             [time.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let t = config.time.get("0").unwrap();
+        let t = instances.time.get("0").unwrap();
         assert_eq!(
             t.timezone,
             tz::TimeZone::from_posix_tz("America/Los_Angeles").unwrap()
@@ -1570,14 +1590,15 @@ mod tests {
 
     #[test]
     fn time_defaults() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [time.0]
             "###,
-        )
-        .unwrap();
+        );
 
-        let t = config.time.get("0").unwrap();
+        let t = instances.time.get("0").unwrap();
         assert_eq!(t.timezone, tz::TimeZone::local().unwrap());
         assert_eq!(
             t.weekdays,
@@ -1593,22 +1614,23 @@ mod tests {
             "['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']",
         ] {
             let input = format!("[time.0]\nweekdays = {weekdays}");
-            let result = std::panic::catch_unwind(|| toml::from_str::<Config>(&input).unwrap());
+            let result = std::panic::catch_unwind(|| parse_config(&input));
             assert!(result.is_err(), "accepted invalid weekdays: {weekdays}");
         }
     }
 
     #[test]
     fn time_format_parses_tokens_and_labels() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [time.0]
             format = ["[hour]", "[minute]", "[day]", "[month]", "[weekday]", "hello"]
             "###,
-        )
-        .unwrap();
+        );
 
-        let t = config.time.get("0").unwrap();
+        let t = instances.time.get("0").unwrap();
         assert_eq!(
             t.format,
             vec![
@@ -1624,14 +1646,15 @@ mod tests {
 
     #[test]
     fn volume_format_default() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [volume.0]
             "###,
-        )
-        .unwrap();
+        );
 
-        let v = config.volume.get("0").unwrap();
+        let v = instances.volume.get("0").unwrap();
         assert_eq!(
             v.format,
             vec![
@@ -1647,7 +1670,9 @@ mod tests {
 
     #[test]
     fn volume_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [volume.0]
             properties = { "device.api" = "bluez5" }
@@ -1687,11 +1712,10 @@ mod tests {
             [volume.2.muted]
             format = ["[volume]", "muted2"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let v0 = config.volume.get("0").unwrap();
+        let v0 = instances.volume.get("0").unwrap();
         assert_eq!(
             v0.properties,
             HashMap::from([("device.api".into(), "bluez5".into())])
@@ -1702,7 +1726,7 @@ mod tests {
         assert_eq!(v0.idle.color.text, Color::rgb(0x12, 0x34, 0x56));
 
         // Empty override
-        let v1 = config.volume.get("1").unwrap();
+        let v1 = instances.volume.get("1").unwrap();
         assert_eq!(
             v1.properties,
             HashMap::from([
@@ -1715,7 +1739,7 @@ mod tests {
         assert_eq!(v1.idle.format, vec![]);
 
         // Override
-        let v2 = config.volume.get("2").unwrap();
+        let v2 = instances.volume.get("2").unwrap();
         assert!(v2.properties.is_empty());
         assert_eq!(v2.down.format, vec![VolumeFormatItem::Label("OFF".into())]);
         assert_eq!(v2.idle.format, vec![VolumeFormatItem::Label("OFF".into())]);
@@ -1730,7 +1754,9 @@ mod tests {
 
     #[test]
     fn battery_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [battery.0]
             format = ["[capacity]", "hello0"]
@@ -1768,11 +1794,10 @@ mod tests {
             [battery.2.low]
             format = ["low2", "[capacity]"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let b0 = config.battery.get("0").unwrap();
+        let b0 = instances.battery.get("0").unwrap();
         assert_eq!(b0.down.format, b0.format);
         assert_eq!(b0.charging.format, b0.format);
         assert_eq!(b0.full.format, b0.format);
@@ -1781,12 +1806,12 @@ mod tests {
         assert_eq!(b0.low.state.format, b0.format);
 
         // Empty override
-        let b1 = config.battery.get("1").unwrap();
+        let b1 = instances.battery.get("1").unwrap();
         assert_eq!(b1.down.format, vec![]);
         assert_eq!(b1.charging.format, vec![]);
 
         // Overrides
-        let b2 = config.battery.get("2").unwrap();
+        let b2 = instances.battery.get("2").unwrap();
         let format = |label: &str| {
             vec![
                 BatteryFormatItem::Label(label.into()),
@@ -1803,7 +1828,9 @@ mod tests {
 
     #[test]
     fn wireless_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [wireless.0]
             format = ["[quality]", "hello0"]
@@ -1829,21 +1856,20 @@ mod tests {
             [wireless.2.low]
             format = ["low2", "[quality]"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let w0 = config.wireless.get("0").unwrap();
+        let w0 = instances.wireless.get("0").unwrap();
         assert_eq!(w0.down.format, w0.format);
         assert_eq!(w0.low.state.format, w0.format);
 
         // Empty override
-        let w1 = config.wireless.get("1").unwrap();
+        let w1 = instances.wireless.get("1").unwrap();
         assert_eq!(w1.down.format, vec![]);
         assert_eq!(w1.low.state.format, vec![]);
 
         // Override
-        let w2 = config.wireless.get("2").unwrap();
+        let w2 = instances.wireless.get("2").unwrap();
         assert_eq!(
             w2.down.format,
             vec![WirelessFormatItem::Label("down2".into())]
@@ -1859,7 +1885,9 @@ mod tests {
 
     #[test]
     fn cpu_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [cpu.0]
             format = ["[usage]", "hello0"]
@@ -1879,19 +1907,18 @@ mod tests {
             [cpu.2.high]
             format = ["high2", "[usage]"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let c0 = config.cpu.get("0").unwrap();
+        let c0 = instances.cpu.get("0").unwrap();
         assert_eq!(c0.high.state.format, c0.format);
 
         // Empty override
-        let c1 = config.cpu.get("1").unwrap();
+        let c1 = instances.cpu.get("1").unwrap();
         assert_eq!(c1.high.state.format, vec![]);
 
         // Override
-        let c2 = config.cpu.get("2").unwrap();
+        let c2 = instances.cpu.get("2").unwrap();
         assert_eq!(
             c2.high.state.format,
             vec![CpuFormatItem::Label("high2".into()), CpuFormatItem::Usage,]
@@ -1900,7 +1927,9 @@ mod tests {
 
     #[test]
     fn memory_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [memory.0]
             format = ["[usage]", "hello0"]
@@ -1920,19 +1949,18 @@ mod tests {
             [memory.2.high]
             format = ["high2", "[usage]"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let c0 = config.memory.get("0").unwrap();
+        let c0 = instances.memory.get("0").unwrap();
         assert_eq!(c0.high.state.format, c0.format);
 
         // Empty override
-        let c1 = config.memory.get("1").unwrap();
+        let c1 = instances.memory.get("1").unwrap();
         assert_eq!(c1.high.state.format, vec![]);
 
         // Override
-        let c2 = config.memory.get("2").unwrap();
+        let c2 = instances.memory.get("2").unwrap();
         assert_eq!(
             c2.high.state.format,
             vec![
@@ -1944,7 +1972,9 @@ mod tests {
 
     #[test]
     fn drive_state_format() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [drive.0]
             format = ["[usage]", "hello0"]
@@ -1964,19 +1994,18 @@ mod tests {
             [drive.2.high]
             format = ["high2", "[usage]"]
             "###,
-        )
-        .unwrap();
+        );
 
         // Inherited
-        let c0 = config.drive.get("0").unwrap();
+        let c0 = instances.drive.get("0").unwrap();
         assert_eq!(c0.high.state.format, c0.format);
 
         // Empty override
-        let c1 = config.drive.get("1").unwrap();
+        let c1 = instances.drive.get("1").unwrap();
         assert_eq!(c1.high.state.format, vec![]);
 
         // Override
-        let c2 = config.drive.get("2").unwrap();
+        let c2 = instances.drive.get("2").unwrap();
         assert_eq!(
             c2.high.state.format,
             vec![
@@ -1988,15 +2017,16 @@ mod tests {
 
     #[test]
     fn file_defaults() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [file.0]
             path = "/tmp/flag"
             "###,
-        )
-        .unwrap();
+        );
 
-        let f = config.file.get("0").unwrap();
+        let f = instances.file.get("0").unwrap();
         assert_eq!(f.path, PathBuf::from("/tmp/flag"));
         assert_eq!(f.block.height, 0);
         assert_eq!(f.block.borders, [0, 0, 0, 0]);
@@ -2013,7 +2043,9 @@ mod tests {
 
     #[test]
     fn file_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [file.0]
             path = "relative/path"
@@ -2027,10 +2059,9 @@ mod tests {
             [file.0.color]
             background = "#aabbcc"
             "###,
-        )
-        .unwrap();
+        );
 
-        let f = config.file.get("0").unwrap();
+        let f = instances.file.get("0").unwrap();
         assert_eq!(f.path, PathBuf::from("relative/path"));
         assert_eq!(f.block.height, 0);
         assert_eq!(f.block.borders, [0, 0, 0, 0]);
@@ -2048,25 +2079,24 @@ mod tests {
     #[test]
     #[should_panic(expected = "file.path must be non-empty")]
     fn file_missing_path_rejected() {
-        toml::from_str::<Config>("[file.0]").unwrap();
+        parse_config("[file.0]");
     }
 
     #[test]
     #[should_panic(expected = "file.path must be non-empty")]
     fn file_empty_path_rejected() {
-        toml::from_str::<Config>("[file.0]\npath = ''").unwrap();
+        parse_config("[file.0]\npath = ''");
     }
 
     #[test]
     fn format_rejects_non_string_items() {
         let result = std::panic::catch_unwind(|| {
-            toml::from_str::<Config>(
+            parse_config(
                 r###"
                 [cpu.0]
                 format = ["[usage]", 1]
                 "###,
             )
-            .unwrap()
         });
 
         assert!(result.is_err());
@@ -2074,7 +2104,9 @@ mod tests {
 
     #[test]
     fn block_height_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [time.0]
             height = 64
@@ -2082,16 +2114,17 @@ mod tests {
             [battery.0]
             margins = [1, 2, 3, 4]
             "###,
-        )
-        .unwrap();
+        );
 
-        assert_eq!(config.time.get("0").unwrap().block.height, 64);
-        assert_eq!(config.battery.get("0").unwrap().block.height, 0);
+        assert_eq!(instances.time.get("0").unwrap().block.height, 64);
+        assert_eq!(instances.battery.get("0").unwrap().block.height, 0);
     }
 
     #[test]
     fn bar_color_propagation() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [bar.color]
             text = "#001122"
@@ -2102,20 +2135,19 @@ mod tests {
             [battery.0]
             [time.0]
             "###,
-        )
-        .unwrap();
+        );
 
         let bar_color = ColorConfig {
             text: Color::rgb(0x00, 0x11, 0x22),
             background: Color::rgb(0x33, 0x44, 0x55),
             border: Color::rgb(0x66, 0x77, 0x88),
         };
-        assert_eq!(config.volume.get("0").unwrap().color, bar_color);
-        assert_eq!(config.volume.get("0").unwrap().idle.color, bar_color);
-        assert_eq!(config.battery.get("0").unwrap().color, bar_color);
-        assert_eq!(config.time.get("0").unwrap().color, bar_color);
+        assert_eq!(instances.volume.get("0").unwrap().color, bar_color);
+        assert_eq!(instances.volume.get("0").unwrap().idle.color, bar_color);
+        assert_eq!(instances.battery.get("0").unwrap().color, bar_color);
+        assert_eq!(instances.time.get("0").unwrap().color, bar_color);
         assert_eq!(
-            config.volume.get("0").unwrap().muted.color,
+            instances.volume.get("0").unwrap().muted.color,
             ColorConfig {
                 text: Color::rgb(0xdf, 0xaf, 0x8f),
                 ..bar_color
@@ -2125,7 +2157,9 @@ mod tests {
 
     #[test]
     fn bar_color_propagation_partial_override() {
-        let config: Config = toml::from_str(
+        let mut config = Config::default();
+        let instances = parse_instances(
+            &mut config,
             r###"
             [bar.color]
             text = "#001122"
@@ -2141,8 +2175,7 @@ mod tests {
             [battery.0.color]
             border = "#333333"
             "###,
-        )
-        .unwrap();
+        );
 
         let bar_color = ColorConfig {
             text: Color::rgb(0x00, 0x11, 0x22),
@@ -2150,21 +2183,21 @@ mod tests {
             border: Color::rgb(0x66, 0x77, 0x88),
         };
         assert_eq!(
-            config.volume.get("0").unwrap().color,
+            instances.volume.get("0").unwrap().color,
             ColorConfig {
                 text: Color::rgb(0x11, 0x11, 0x11),
                 ..bar_color
             }
         );
         assert_eq!(
-            config.time.get("0").unwrap().color,
+            instances.time.get("0").unwrap().color,
             ColorConfig {
                 background: Color::rgb(0x22, 0x22, 0x22),
                 ..bar_color
             }
         );
         assert_eq!(
-            config.battery.get("0").unwrap().color,
+            instances.battery.get("0").unwrap().color,
             ColorConfig {
                 border: Color::rgb(0x33, 0x33, 0x33),
                 ..bar_color
@@ -2191,7 +2224,8 @@ mod tests {
             "###,
         );
 
-        let config = Config::from_file(path);
+        let mut config = Config::default();
+        config.load_file(path);
 
         assert_eq!(config.bar.width, 20);
         assert_eq!(config.bar.separator, 14);
@@ -2240,7 +2274,8 @@ mod tests {
             "###,
         );
 
-        let config = Config::from_dir(tmp.path());
+        let mut config = Config::default();
+        let instances = config.load_dir(tmp.path());
 
         assert_eq!(config.bar.width, 40);
         assert_eq!(config.bar.blocks, ["volume.0"]);
@@ -2248,12 +2283,15 @@ mod tests {
         assert_eq!(config.bar.color.background, Color::rgb(0x44, 0x44, 0x44));
         assert_eq!(config.bar.color.border, Color::rgb(0x33, 0x33, 0x33));
         assert_eq!(
-            config.cpu.get("0").unwrap().format,
+            instances.cpu.get("0").unwrap().format,
             [CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage]
         );
-        assert_eq!(config.volume.get("0").unwrap().block.margins, [1, 2, 3, 4]);
         assert_eq!(
-            config.volume.get("0").unwrap().color.background,
+            instances.volume.get("0").unwrap().block.margins,
+            [1, 2, 3, 4]
+        );
+        assert_eq!(
+            instances.volume.get("0").unwrap().color.background,
             Color::rgb(0x44, 0x44, 0x44)
         );
     }
@@ -2269,7 +2307,8 @@ mod tests {
             "###,
         );
 
-        let config = Config::from_dir(tmp.path());
+        let mut config = Config::default();
+        config.load_dir(tmp.path());
 
         assert_eq!(config.bar.interval, Duration::from_secs(55));
         assert_eq!(config.bar.width, 28);
@@ -2295,7 +2334,8 @@ mod tests {
             "###,
         );
 
-        let config = Config::from_dir(tmp.path());
+        let mut config = Config::default();
+        config.load_dir(tmp.path());
 
         assert_eq!(config.bar.width, 30);
     }

@@ -42,8 +42,13 @@ fn main() {
         log::set(log::Level::Warning);
     }
 
-    let conn = Connection::connect_to_env().expect("Failed to connect to Wayland compositor");
+    let mut config = Config::default();
+    let instances = match args.config {
+        Some(path) => config.load_file(path),
+        None => config.load(),
+    };
 
+    let conn = Connection::connect_to_env().expect("Failed to connect to Wayland compositor");
     let mut event_queue = conn.new_event_queue();
     let qh = event_queue.handle();
 
@@ -57,11 +62,7 @@ fn main() {
     };
 
     // Move globals to State and create outputs.
-    let config = args
-        .config
-        .map(Config::from_file)
-        .unwrap_or_else(Config::load);
-    let mut state = State::new(config, qh.clone(), init);
+    let mut state = State::new(config, instances, qh.clone(), init);
     let _ = conn.display().get_registry(&qh, ());
     event_queue.roundtrip(&mut state).unwrap();
 
