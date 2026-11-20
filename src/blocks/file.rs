@@ -72,7 +72,7 @@ impl Block for File {
 
     fn colors(&self) -> &ColorConfig {
         if self.exists {
-            &self.config.color
+            &self.config.block.color
         } else {
             &self.config.down.color
         }

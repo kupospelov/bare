@@ -657,7 +657,7 @@ impl Block for Volume {
         } else if self.sink.mute {
             &self.config.muted.color
         } else {
-            &self.config.color
+            &self.config.block.color
         }
     }
 
@@ -862,7 +862,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
-        assert_eq!(volume.colors(), &config.color);
+        assert_eq!(volume.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -880,7 +880,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
-        assert_eq!(volume.colors(), &config.color);
+        assert_eq!(volume.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -916,7 +916,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(volume.format(), config.format);
-        assert_eq!(volume.colors(), &config.color);
+        assert_eq!(volume.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {

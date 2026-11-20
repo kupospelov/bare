@@ -117,7 +117,7 @@ impl Block for Drive {
         if self.is_high() {
             &self.config.high.state.color
         } else {
-            &self.config.color
+            &self.config.block.color
         }
     }
 
@@ -168,7 +168,7 @@ mod tests {
         // Initialize
         let dirty = drive.update_usage(80).unwrap();
         assert_eq!(drive.format(), config.format);
-        assert_eq!(drive.colors(), &config.color);
+        assert_eq!(drive.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {
@@ -204,7 +204,7 @@ mod tests {
         // Normal
         let dirty = drive.update_usage(80).unwrap();
         assert_eq!(drive.format(), config.format);
-        assert_eq!(drive.colors(), &config.color);
+        assert_eq!(drive.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {

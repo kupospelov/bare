@@ -223,7 +223,7 @@ pub trait Block {
     /// The block layout.
     fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> render::BlockLayout {
         let content = content_height(self, rasterizer, scale);
-        let block = self.block().scaled(scale);
+        let block = self.block().size.scaled(scale);
         render::BlockLayout {
             content,
             height: if content > 0 {

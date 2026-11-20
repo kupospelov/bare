@@ -196,7 +196,7 @@ impl Block for Wireless {
         match self.state() {
             WirelessState::Down => &self.config.down.color,
             WirelessState::Low => &self.config.low.state.color,
-            WirelessState::Normal => &self.config.color,
+            WirelessState::Normal => &self.config.block.color,
         }
     }
 
@@ -267,7 +267,7 @@ mod tests {
         // Normal
         let dirty = wireless.update(Some(80)).unwrap();
         assert_eq!(wireless.format(), config.format);
-        assert_eq!(wireless.colors(), &config.color);
+        assert_eq!(wireless.colors(), &config.block.color);
         assert_eq!(
             dirty,
             BlockDirty {

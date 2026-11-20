@@ -14,7 +14,7 @@ pub struct Workspaces {
 impl Workspaces {
     pub fn new(config: &WorkspaceConfig, font_size: u32) -> Self {
         let c = config.scaled(1);
-        let height = c.block.height(font_size as i32);
+        let height = c.size.height(font_size as i32);
         Self {
             items: Vec::new(),
             height,
@@ -87,7 +87,7 @@ impl Workspaces {
             let inner = renderer.draw_block(
                 map,
                 outer,
-                &self.config.block,
+                &self.config.size,
                 state.color.background,
                 state.color.border,
             );
@@ -113,7 +113,7 @@ impl Workspaces {
 
     pub fn set_scale(&mut self, config: &crate::config::Config, font_size: u32, scale: i32) {
         let c = config.workspace.scaled(scale);
-        self.height = c.block.height(font_size as i32 * scale);
+        self.height = c.size.height(font_size as i32 * scale);
         self.config = c;
     }
 }

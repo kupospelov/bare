@@ -55,7 +55,7 @@ impl Default for BarConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceConfig {
-    pub block: BlockConfig,
+    pub size: SizeConfig,
     pub active: StateConfig,
     pub inactive: StateConfig,
     pub urgent: StateConfig,
@@ -63,13 +63,28 @@ pub struct WorkspaceConfig {
 
 #[derive(Debug, Default, Clone, Deserialize, PartialEq)]
 pub struct BlockConfig {
+    pub color: ColorConfig,
+
+    #[serde(flatten)]
+    pub size: SizeConfig,
+}
+
+impl BlockConfig {
+    fn visit(&mut self, toml: &mut Toml) {
+        toml.get("color").visit(&mut self.color);
+        self.size.visit(toml);
+    }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+pub struct SizeConfig {
     pub margins: [i32; 4],
     pub borders: [i32; 4],
     pub corners: [u32; 4],
     pub height: i32,
 }
 
-impl BlockConfig {
+impl SizeConfig {
     pub fn scaled(&self, scale: i32) -> Self {
         Self {
             margins: self.margins.map(|v| v * scale),
@@ -112,7 +127,7 @@ impl Default for ColorConfig {
 impl WorkspaceConfig {
     pub fn scaled(&self, scale: i32) -> Self {
         Self {
-            block: self.block.scaled(scale),
+            size: self.size.scaled(scale),
             active: self.active.clone(),
             inactive: self.inactive.clone(),
             urgent: self.urgent.clone(),
@@ -121,7 +136,7 @@ impl WorkspaceConfig {
 
     pub(crate) fn default() -> Self {
         Self {
-            block: BlockConfig {
+            size: SizeConfig {
                 height: 26,
                 borders: [1; 4],
                 corners: [0; 4],
@@ -158,7 +173,6 @@ impl WorkspaceConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VolumeConfig {
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub properties: HashMap<String, String>,
     pub down: StateConfig<VolumeFormatItem>,
     pub idle: StateConfig<VolumeFormatItem>,
@@ -174,8 +188,10 @@ impl VolumeConfig {
         ];
 
         Self {
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             properties: HashMap::new(),
             down: StateConfig {
                 color: ColorConfig {
@@ -232,7 +248,6 @@ pub struct BatteryConfig {
     pub poll: bool,
     pub design_capacity: bool,
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<BatteryFormatItem>,
 
     // States.
@@ -267,8 +282,10 @@ impl BatteryConfig {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             poll: true,
             design_capacity: false,
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -340,7 +357,6 @@ impl FormatItem for BatteryFormatItem {
 pub struct WirelessConfig {
     pub interface: String,
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<WirelessFormatItem>,
     pub down: StateConfig<WirelessFormatItem>,
     pub low: ThresholdStateConfig<WirelessFormatItem>,
@@ -355,8 +371,10 @@ impl WirelessConfig {
 
         Self {
             interface: "wlan0".into(),
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -410,7 +428,6 @@ pub struct TimeConfig {
     pub timezone: tz::TimeZone,
     pub weekdays: [String; 7],
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<TimeFormatItem>,
 }
 
@@ -427,8 +444,10 @@ impl TimeConfig {
         Self {
             timezone,
             weekdays: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(String::from),
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: vec![TimeFormatItem::Hour, TimeFormatItem::Minute],
         }
     }
@@ -471,7 +490,6 @@ impl FormatItem for TimeFormatItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CpuConfig {
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<CpuFormatItem>,
     pub high: ThresholdStateConfig<CpuFormatItem>,
 }
@@ -481,8 +499,10 @@ impl CpuConfig {
         let format = vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage];
 
         Self {
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -527,7 +547,6 @@ impl FormatItem for CpuFormatItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryConfig {
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<MemoryFormatItem>,
     pub high: ThresholdStateConfig<MemoryFormatItem>,
 }
@@ -540,8 +559,10 @@ impl MemoryConfig {
         ];
 
         Self {
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -587,7 +608,6 @@ impl FormatItem for MemoryFormatItem {
 pub struct DriveConfig {
     pub path: PathBuf,
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<DriveFormatItem>,
     pub high: ThresholdStateConfig<DriveFormatItem>,
 }
@@ -598,8 +618,10 @@ impl DriveConfig {
 
         Self {
             path: PathBuf::from("/"),
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -645,7 +667,6 @@ impl FormatItem for DriveFormatItem {
 pub struct FileConfig {
     pub path: PathBuf,
     pub block: BlockConfig,
-    pub color: ColorConfig,
     pub format: Vec<String>,
     pub down: StateConfig<String>,
 }
@@ -655,8 +676,10 @@ impl FileConfig {
         let format = vec!["PTH".into()];
         Self {
             path: PathBuf::new(),
-            block: BlockConfig::default(),
-            color: color.clone(),
+            block: BlockConfig {
+                color: color.clone(),
+                ..BlockConfig::default()
+            },
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -890,7 +913,7 @@ impl<T: serde::de::DeserializeOwned> Visit for ThresholdStateConfig<T> {
 
 impl Visit for WorkspaceConfig {
     fn visit(&mut self, mut toml: Toml) {
-        self.block.visit(&mut toml);
+        self.size.visit(&mut toml);
         toml.get("active").visit(&mut self.active);
         toml.get("inactive").visit(&mut self.inactive);
         toml.get("urgent").visit(&mut self.urgent);
@@ -908,8 +931,6 @@ impl Visit for VolumeConfig {
         self.muted.format.clone_from(&self.format);
 
         toml.get("properties").set(&mut self.properties);
-        toml.get("color").visit(&mut self.color);
-        self.idle.color.clone_from(&self.color);
         toml.get("down").visit(&mut self.down);
         toml.get("idle").visit(&mut self.idle);
         toml.get("muted").visit(&mut self.muted);
@@ -932,7 +953,6 @@ impl Visit for BatteryConfig {
         toml.get("path").set(&mut self.path);
         toml.get("poll").set(&mut self.poll);
         toml.get("design_capacity").set(&mut self.design_capacity);
-        toml.get("color").visit(&mut self.color);
         toml.get("down").visit(&mut self.down);
         toml.get("charging").visit(&mut self.charging);
         toml.get("full").visit(&mut self.full);
@@ -952,7 +972,6 @@ impl Visit for WirelessConfig {
         self.low.state.format.clone_from(&self.format);
 
         toml.get("interface").set(&mut self.interface);
-        toml.get("color").visit(&mut self.color);
         toml.get("down").visit(&mut self.down);
         toml.get("low").visit(&mut self.low);
         toml.empty();
@@ -970,7 +989,6 @@ impl Visit for TimeConfig {
             .set(&mut self.timezone);
         toml.get("weekdays").set(&mut self.weekdays);
         toml.get("format").set(&mut self.format);
-        toml.get("color").visit(&mut self.color);
         toml.empty();
     }
 }
@@ -982,7 +1000,6 @@ impl Visit for CpuConfig {
         toml.get("format").set(&mut self.format);
         self.high.state.format.clone_from(&self.format);
 
-        toml.get("color").visit(&mut self.color);
         toml.get("high").visit(&mut self.high);
         toml.empty();
     }
@@ -995,7 +1012,6 @@ impl Visit for MemoryConfig {
         toml.get("format").set(&mut self.format);
         self.high.state.format.clone_from(&self.format);
 
-        toml.get("color").visit(&mut self.color);
         toml.get("high").visit(&mut self.high);
         toml.empty();
     }
@@ -1009,7 +1025,6 @@ impl Visit for DriveConfig {
         toml.get("format").set(&mut self.format);
         self.high.state.format.clone_from(&self.format);
 
-        toml.get("color").visit(&mut self.color);
         toml.get("high").visit(&mut self.high);
         toml.empty();
     }
@@ -1026,7 +1041,6 @@ impl Visit for FileConfig {
         );
         toml.get("format").set(&mut self.format);
         self.down.format.clone_from(&self.format);
-        toml.get("color").visit(&mut self.color);
         toml.get("down").visit(&mut self.down);
         toml.empty();
     }
@@ -1121,10 +1135,10 @@ pub(crate) mod tests {
         assert_eq!(b.color.border, Color::rgb(0, 0, 0));
 
         let w = config.workspace;
-        assert_eq!(w.block.borders, [1, 1, 1, 1]);
-        assert_eq!(w.block.margins, [0, 2, 2, 0]);
-        assert_eq!(w.block.corners, [0, 0, 0, 0]);
-        assert_eq!(w.block.height, 26);
+        assert_eq!(w.size.borders, [1, 1, 1, 1]);
+        assert_eq!(w.size.margins, [0, 2, 2, 0]);
+        assert_eq!(w.size.corners, [0, 0, 0, 0]);
+        assert_eq!(w.size.height, 26);
         assert_eq!(w.active.color.text, Color::rgb(0xff, 0xff, 0xff));
         assert_eq!(w.active.color.background, Color::rgb(0x28, 0x55, 0x77));
         assert_eq!(w.active.color.border, Color::rgb(0x4c, 0x78, 0x99));
@@ -1227,9 +1241,9 @@ pub(crate) mod tests {
         );
 
         let w = config.workspace;
-        assert_eq!(w.block.borders, [1, 1, 1, 1]);
-        assert_eq!(w.block.margins, [10, 20, 30, 40]);
-        assert_eq!(w.block.height, 50);
+        assert_eq!(w.size.borders, [1, 1, 1, 1]);
+        assert_eq!(w.size.margins, [10, 20, 30, 40]);
+        assert_eq!(w.size.height, 50);
         assert_eq!(w.inactive.color.text, Color::rgb(0x88, 0x88, 0x88));
         assert_eq!(w.inactive.color.background, Color::rgb(0x11, 0x22, 0x33));
         assert_eq!(w.inactive.color.border, Color::rgb(0x33, 0x33, 0x33));
@@ -1254,11 +1268,11 @@ pub(crate) mod tests {
         );
 
         let c = instances.cpu.get("0").unwrap();
-        assert_eq!(c.block.margins, [1, 2, 3, 4]);
-        assert_eq!(c.block.borders, [0, 0, 0, 0]);
-        assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(c.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(c.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(c.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(c.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(c.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(c.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(c.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(c.high.threshold, 90);
         assert_eq!(c.high.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(c.high.state.color.background, Color::rgb(0, 0, 0));
@@ -1271,10 +1285,10 @@ pub(crate) mod tests {
         let instances = parse_instances(&mut config, "[memory.0]");
 
         let m = instances.memory.get("0").unwrap();
-        assert_eq!(m.block.height, 0);
-        assert_eq!(m.block.borders, [0, 0, 0, 0]);
-        assert_eq!(m.block.margins, [0, 0, 0, 0]);
-        assert_eq!(m.color, config.bar.color);
+        assert_eq!(m.block.size.height, 0);
+        assert_eq!(m.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(m.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(m.block.color, config.bar.color);
         assert_eq!(
             m.format,
             [
@@ -1285,8 +1299,8 @@ pub(crate) mod tests {
         assert_eq!(m.high.threshold, 80);
         assert_eq!(m.high.state.format, m.format);
         assert_eq!(m.high.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
-        assert_eq!(m.high.state.color.background, m.color.background);
-        assert_eq!(m.high.state.color.border, m.color.border);
+        assert_eq!(m.high.state.color.background, m.block.color.background);
+        assert_eq!(m.high.state.color.border, m.block.color.border);
     }
 
     #[test]
@@ -1308,11 +1322,11 @@ pub(crate) mod tests {
         );
 
         let c = instances.memory.get("0").unwrap();
-        assert_eq!(c.block.margins, [1, 2, 3, 4]);
-        assert_eq!(c.block.borders, [0, 0, 0, 0]);
-        assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(c.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(c.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(c.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(c.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(c.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(c.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(c.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(c.high.threshold, 90);
         assert_eq!(c.high.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(c.high.state.color.background, Color::rgb(0, 0, 0));
@@ -1326,10 +1340,10 @@ pub(crate) mod tests {
 
         let c = instances.drive.get("0").unwrap();
         assert_eq!(c.path, PathBuf::from("/"));
-        assert_eq!(c.block.height, 0);
-        assert_eq!(c.block.borders, [0, 0, 0, 0]);
-        assert_eq!(c.block.margins, [0, 0, 0, 0]);
-        assert_eq!(c.color, config.bar.color);
+        assert_eq!(c.block.size.height, 0);
+        assert_eq!(c.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(c.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(c.block.color, config.bar.color);
         assert_eq!(
             c.format,
             [DriveFormatItem::Label("DRV".into()), DriveFormatItem::Usage]
@@ -1337,8 +1351,8 @@ pub(crate) mod tests {
         assert_eq!(c.high.threshold, 80);
         assert_eq!(c.high.state.format, c.format);
         assert_eq!(c.high.state.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
-        assert_eq!(c.high.state.color.background, c.color.background);
-        assert_eq!(c.high.state.color.border, c.color.border);
+        assert_eq!(c.high.state.color.background, c.block.color.background);
+        assert_eq!(c.high.state.color.border, c.block.color.border);
     }
 
     #[test]
@@ -1362,11 +1376,11 @@ pub(crate) mod tests {
 
         let c = instances.drive.get("0").unwrap();
         assert_eq!(c.path, PathBuf::from("/home"));
-        assert_eq!(c.block.margins, [1, 2, 3, 4]);
-        assert_eq!(c.block.borders, [0, 0, 0, 0]);
-        assert_eq!(c.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(c.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(c.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(c.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(c.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(c.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(c.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(c.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(c.high.threshold, 90);
         assert_eq!(c.high.state.color.text, Color::rgb(0x12, 0x34, 0x56));
         assert_eq!(c.high.state.color.background, Color::rgb(0, 0, 0));
@@ -1388,8 +1402,8 @@ pub(crate) mod tests {
         );
 
         let v = instances.volume.get("0").unwrap();
-        assert_eq!(v.block.margins, [1, 2, 3, 4]);
-        assert_eq!(v.block.borders, [0, 0, 0, 0]);
+        assert_eq!(v.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(v.block.size.borders, [0, 0, 0, 0]);
         assert_eq!(v.muted.color.text, Color::rgb(0xdf, 0xaf, 0x8f));
         assert_eq!(v.muted.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
         assert_eq!(v.muted.color.border, Color::rgb(0, 0, 0));
@@ -1407,12 +1421,12 @@ pub(crate) mod tests {
 
         let b = instances.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT0/uevent"));
-        assert_eq!(b.block.height, 0);
-        assert_eq!(b.block.borders, [0, 0, 0, 0]);
-        assert_eq!(b.block.margins, [0, 0, 0, 0]);
-        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(b.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(b.block.size.height, 0);
+        assert_eq!(b.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(b.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(b.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.block.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(b.block.color.border, Color::rgb(0, 0, 0));
 
         assert_eq!(
             b.format,
@@ -1464,12 +1478,12 @@ pub(crate) mod tests {
         let b = instances.battery.get("0").unwrap();
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT1/uevent"));
         assert!(b.design_capacity);
-        assert_eq!(b.block.height, 0);
-        assert_eq!(b.block.borders, [0, 0, 0, 0]);
-        assert_eq!(b.block.margins, [1, 2, 3, 4]);
-        assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(b.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(b.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(b.block.size.height, 0);
+        assert_eq!(b.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(b.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(b.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(b.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(b.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(b.down.format, vec![BatteryFormatItem::Label("OFF".into())]);
         assert_eq!(b.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
         assert_eq!(b.down.color.background, Color::rgb(0, 0, 0));
@@ -1492,12 +1506,12 @@ pub(crate) mod tests {
 
         let w = instances.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlan0");
-        assert_eq!(w.block.height, 0);
-        assert_eq!(w.block.borders, [0, 0, 0, 0]);
-        assert_eq!(w.block.margins, [0, 0, 0, 0]);
-        assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(w.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(w.block.size.height, 0);
+        assert_eq!(w.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(w.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(w.block.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(w.block.color.border, Color::rgb(0, 0, 0));
 
         assert_eq!(
             w.format,
@@ -1543,12 +1557,12 @@ pub(crate) mod tests {
 
         let w = instances.wireless.get("0").unwrap();
         assert_eq!(w.interface, "wlp3s0");
-        assert_eq!(w.block.height, 0);
-        assert_eq!(w.block.borders, [0, 0, 0, 0]);
-        assert_eq!(w.block.margins, [1, 2, 3, 4]);
-        assert_eq!(w.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(w.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(w.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(w.block.size.height, 0);
+        assert_eq!(w.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(w.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(w.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(w.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(w.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(w.down.format, vec![WirelessFormatItem::Label("OFF".into())]);
         assert_eq!(w.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
         assert_eq!(w.down.color.background, Color::rgb(0, 0, 0));
@@ -1580,12 +1594,12 @@ pub(crate) mod tests {
             t.timezone,
             tz::TimeZone::from_posix_tz("America/Los_Angeles").unwrap()
         );
-        assert_eq!(t.block.margins, [1, 2, 3, 4]);
+        assert_eq!(t.block.size.margins, [1, 2, 3, 4]);
         assert_eq!(t.weekdays, ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
-        assert_eq!(t.block.borders, [0, 0, 0, 0]);
-        assert_eq!(t.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(t.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(t.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(t.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(t.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(t.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(t.block.color.border, Color::rgb(0, 0, 0));
     }
 
     #[test]
@@ -1665,7 +1679,7 @@ pub(crate) mod tests {
         assert_eq!(v.muted.format, v.format);
         assert_eq!(v.down.format, v.format);
         assert_eq!(v.idle.format, v.format);
-        assert_eq!(v.idle.color, v.color);
+        assert_eq!(v.idle.color, v.block.color);
     }
 
     #[test]
@@ -2028,12 +2042,12 @@ pub(crate) mod tests {
 
         let f = instances.file.get("0").unwrap();
         assert_eq!(f.path, PathBuf::from("/tmp/flag"));
-        assert_eq!(f.block.height, 0);
-        assert_eq!(f.block.borders, [0, 0, 0, 0]);
-        assert_eq!(f.block.margins, [0, 0, 0, 0]);
-        assert_eq!(f.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(f.color.background, Color::rgb(0, 0, 0));
-        assert_eq!(f.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(f.block.size.height, 0);
+        assert_eq!(f.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(f.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(f.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(f.block.color.background, Color::rgb(0, 0, 0));
+        assert_eq!(f.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(f.format, ["PTH"]);
         assert_eq!(f.down.format, f.format);
         assert_eq!(f.down.color.text, Color::rgb(0xdc, 0xa3, 0xa3));
@@ -2063,12 +2077,12 @@ pub(crate) mod tests {
 
         let f = instances.file.get("0").unwrap();
         assert_eq!(f.path, PathBuf::from("relative/path"));
-        assert_eq!(f.block.height, 0);
-        assert_eq!(f.block.borders, [0, 0, 0, 0]);
-        assert_eq!(f.block.margins, [1, 2, 3, 4]);
-        assert_eq!(f.color.text, Color::rgb(0x64, 0x64, 0x64));
-        assert_eq!(f.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
-        assert_eq!(f.color.border, Color::rgb(0, 0, 0));
+        assert_eq!(f.block.size.height, 0);
+        assert_eq!(f.block.size.borders, [0, 0, 0, 0]);
+        assert_eq!(f.block.size.margins, [1, 2, 3, 4]);
+        assert_eq!(f.block.color.text, Color::rgb(0x64, 0x64, 0x64));
+        assert_eq!(f.block.color.background, Color::rgb(0xaa, 0xbb, 0xcc));
+        assert_eq!(f.block.color.border, Color::rgb(0, 0, 0));
         assert_eq!(f.format, ["[literal]", "ON"]);
         assert_eq!(f.down.format, ["OFF"]);
         assert_eq!(f.down.color.text, Color::rgb(0xab, 0xcd, 0xef));
@@ -2116,8 +2130,8 @@ pub(crate) mod tests {
             "###,
         );
 
-        assert_eq!(instances.time.get("0").unwrap().block.height, 64);
-        assert_eq!(instances.battery.get("0").unwrap().block.height, 0);
+        assert_eq!(instances.time.get("0").unwrap().block.size.height, 64);
+        assert_eq!(instances.battery.get("0").unwrap().block.size.height, 0);
     }
 
     #[test]
@@ -2142,10 +2156,10 @@ pub(crate) mod tests {
             background: Color::rgb(0x33, 0x44, 0x55),
             border: Color::rgb(0x66, 0x77, 0x88),
         };
-        assert_eq!(instances.volume.get("0").unwrap().color, bar_color);
+        assert_eq!(instances.volume.get("0").unwrap().block.color, bar_color);
         assert_eq!(instances.volume.get("0").unwrap().idle.color, bar_color);
-        assert_eq!(instances.battery.get("0").unwrap().color, bar_color);
-        assert_eq!(instances.time.get("0").unwrap().color, bar_color);
+        assert_eq!(instances.battery.get("0").unwrap().block.color, bar_color);
+        assert_eq!(instances.time.get("0").unwrap().block.color, bar_color);
         assert_eq!(
             instances.volume.get("0").unwrap().muted.color,
             ColorConfig {
@@ -2183,21 +2197,21 @@ pub(crate) mod tests {
             border: Color::rgb(0x66, 0x77, 0x88),
         };
         assert_eq!(
-            instances.volume.get("0").unwrap().color,
+            instances.volume.get("0").unwrap().block.color,
             ColorConfig {
                 text: Color::rgb(0x11, 0x11, 0x11),
                 ..bar_color
             }
         );
         assert_eq!(
-            instances.time.get("0").unwrap().color,
+            instances.time.get("0").unwrap().block.color,
             ColorConfig {
                 background: Color::rgb(0x22, 0x22, 0x22),
                 ..bar_color
             }
         );
         assert_eq!(
-            instances.battery.get("0").unwrap().color,
+            instances.battery.get("0").unwrap().block.color,
             ColorConfig {
                 border: Color::rgb(0x33, 0x33, 0x33),
                 ..bar_color
@@ -2287,11 +2301,11 @@ pub(crate) mod tests {
             [CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage]
         );
         assert_eq!(
-            instances.volume.get("0").unwrap().block.margins,
+            instances.volume.get("0").unwrap().block.size.margins,
             [1, 2, 3, 4]
         );
         assert_eq!(
-            instances.volume.get("0").unwrap().color.background,
+            instances.volume.get("0").unwrap().block.color.background,
             Color::rgb(0x44, 0x44, 0x44)
         );
     }

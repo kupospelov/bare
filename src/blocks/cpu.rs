@@ -125,7 +125,7 @@ impl Block for Cpu {
         if self.is_high() {
             &self.config.high.state.color
         } else {
-            &self.config.color
+            &self.config.block.color
         }
     }
 

@@ -365,7 +365,7 @@ impl Block for Battery {
     fn colors(&self) -> &ColorConfig {
         match self.state {
             BatteryState::Down => &self.config.down.color,
-            BatteryState::Discharging => &self.config.color,
+            BatteryState::Discharging => &self.config.block.color,
             BatteryState::Charging => &self.config.charging.color,
             BatteryState::Full => &self.config.full.color,
             BatteryState::Idle => &self.config.idle.color,
@@ -489,7 +489,7 @@ mod tests {
             battery.format(),
             [BatteryFormatItem::Label("discharging".into())]
         );
-        assert_eq!(battery.colors(), &battery.config.color);
+        assert_eq!(battery.colors(), &battery.config.block.color);
         assert!(dirty.layout);
 
         // Capacity changes

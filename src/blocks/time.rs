@@ -113,7 +113,7 @@ impl Block for Time {
     }
 
     fn colors(&self) -> &ColorConfig {
-        &self.config.color
+        &self.config.block.color
     }
 
     fn len(&self) -> usize {

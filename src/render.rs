@@ -1,7 +1,7 @@
 use crate::blocks::workspaces::Workspaces;
 use crate::blocks::{Block, Blocks};
 use crate::color::Color;
-use crate::config::{BlockConfig, Config};
+use crate::config::{Config, SizeConfig};
 use crate::font;
 use crate::map::{Flip, Map, Mem};
 use crate::raster::Rasterizer;
@@ -78,7 +78,7 @@ pub struct BlockLayout {
     pub content: i32,
     // Content height with margins.
     pub height: i32,
-    pub config: BlockConfig,
+    pub config: SizeConfig,
 }
 
 #[derive(Default)]
@@ -109,7 +109,7 @@ impl Renderer {
         &mut self,
         map: &mut dyn Map,
         region: Region,
-        config: &BlockConfig,
+        config: &SizeConfig,
         background: Color,
         border: Color,
     ) -> Region {
@@ -632,7 +632,7 @@ mod tests {
             w: SIZE,
             h: SIZE,
         };
-        let config = BlockConfig {
+        let config = SizeConfig {
             margins: [1, 2, 3, 4],
             borders: [5, 6, 7, 8],
             corners: [0; 4],
@@ -656,7 +656,7 @@ mod tests {
             w: 0,
             h: 0,
         };
-        let inner = r.draw_block(&mut map, outer, &BlockConfig::default(), BG, FG);
+        let inner = r.draw_block(&mut map, outer, &SizeConfig::default(), BG, FG);
         assert_eq!(inner.w, 0);
         assert_eq!(inner.h, 0);
         assert_eq!(buf, vec![0u8; 4]);
