@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn state_changes() {
-        let mut config = DriveConfig::default(&ColorConfig::default());
+        let mut config = DriveConfig::default(&BlockConfig::default());
         config.format = vec![DriveFormatItem::Label("normal".into())];
         config.high.state.format = vec![
             DriveFormatItem::Label("high".into()),

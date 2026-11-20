@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn state_changes() {
-        let mut config = WirelessConfig::default(&ColorConfig::default());
+        let mut config = WirelessConfig::default(&BlockConfig::default());
         config.format = vec![WirelessFormatItem::Label("normal".into())];
         config.down.format = vec![WirelessFormatItem::Label("down".into())];
         config.low.state.format = vec![

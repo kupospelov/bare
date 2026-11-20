@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn state_changes() {
-        let mut config = BatteryConfig::default(&ColorConfig::default());
+        let mut config = BatteryConfig::default(&BlockConfig::default());
         config.format = vec![BatteryFormatItem::Label("discharging".into())];
         config.down.format = vec![BatteryFormatItem::Label("down".into())];
         config.charging.format = vec![BatteryFormatItem::Label("charging".into())];

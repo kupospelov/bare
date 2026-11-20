@@ -102,7 +102,7 @@ mod tests {
         let tmp = Directory::new();
         let config = FileConfig {
             path: tmp.path().join("flag"),
-            ..FileConfig::default(&ColorConfig::default())
+            ..FileConfig::default(&BlockConfig::default())
         };
 
         let mut file = File::new(3, &config);

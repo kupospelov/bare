@@ -113,7 +113,7 @@ impl Blocks {
                         .time
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| TimeConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| TimeConfig::default(&instances.block));
                     blocks.order.push(blocks.time.add(i, &cfg));
                 }
                 "battery" => {
@@ -121,7 +121,7 @@ impl Blocks {
                         .battery
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| BatteryConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| BatteryConfig::default(&instances.block));
                     blocks.order.push(blocks.battery.add(i, &cfg));
                 }
                 "volume" => {
@@ -129,7 +129,7 @@ impl Blocks {
                         .volume
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| VolumeConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| VolumeConfig::default(&instances.block));
                     blocks.order.push(blocks.volume.add(i, &cfg));
                 }
                 "wireless" => {
@@ -137,7 +137,7 @@ impl Blocks {
                         .wireless
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| WirelessConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| WirelessConfig::default(&instances.block));
                     blocks.order.push(blocks.wireless.add(i, &cfg));
                 }
                 "cpu" => {
@@ -145,7 +145,7 @@ impl Blocks {
                         .cpu
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| CpuConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| CpuConfig::default(&instances.block));
                     blocks.order.push(blocks.cpu.add(i, &cfg));
                 }
                 "memory" => {
@@ -153,7 +153,7 @@ impl Blocks {
                         .memory
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| MemoryConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| MemoryConfig::default(&instances.block));
                     blocks.order.push(blocks.memory.add(i, &cfg));
                 }
                 "drive" => {
@@ -161,7 +161,7 @@ impl Blocks {
                         .drive
                         .get(name)
                         .cloned()
-                        .unwrap_or_else(|| DriveConfig::default(&config.bar.color));
+                        .unwrap_or_else(|| DriveConfig::default(&instances.block));
                     blocks.order.push(blocks.drive.add(i, &cfg));
                 }
                 "file" => {

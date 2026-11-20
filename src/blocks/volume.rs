@@ -845,7 +845,7 @@ mod tests {
 
     #[test]
     fn state_changes() {
-        let mut config = VolumeConfig::default(&ColorConfig::default());
+        let mut config = VolumeConfig::default(&BlockConfig::default());
         config.format = vec![VolumeFormatItem::Label("VOL".into())];
         config.muted.format = vec![
             VolumeFormatItem::Label("MUT".into()),

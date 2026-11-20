@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn state_changes() {
-        let mut config = CpuConfig::default(&ColorConfig::default());
+        let mut config = CpuConfig::default(&BlockConfig::default());
         config.format = vec![CpuFormatItem::Label("normal".into())];
         config.high.state.format = vec![CpuFormatItem::Label("high".into()), CpuFormatItem::Usage];
         let mut cpu = Cpu::new(3, &config);

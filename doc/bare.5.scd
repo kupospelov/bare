@@ -53,11 +53,20 @@ The *\[bar\]* section configures the bar.
 # WORKSPACE
 
 The *\[workspace\]* section accepts options described in *BOX MODEL* with the
-following defaults: *height*=26, *borders*=\[1, 1, 1, 1\], *margins*=\[0, 2, 2,
-0\].
+following defaults: *height*=26, *borders*=\[1, 1, 1, 1\], *corners*=\[0, 0, 0,
+0\], *margins*=\[0, 2, 2, 0\].
 
 In addition to that, workspaces have the *active*, *inactive*, and *urgent*
 states. Each state defines a color section. See *COLORS* for more information.
+
+# BLOCK
+
+The *\[block\]* section accepts options described in *BOX MODEL* with the
+following defaults: *height*=0, *borders*=\[0, 0, 0, 0\], *corners*=\[0, 0, 0,
+0\] *margins*=\[0, 0, 0, 0\].
+
+In addition to that, the section accepts a color section that inherits omitted
+fields from *\[bar.color\]*. See *COLORS* for more information.
 
 # BLOCKS
 
@@ -70,7 +79,7 @@ Each block section accepts options described in *BOX MODEL*, a *color* section
 described in *COLORS*, and a *format* option specific to the block type.
 
 If the *color* section is omitted, the block inherits the colors configured in
-*\[bar.color\]*. If a block supports states, the colors can be overridden
+*\[block.color\]*. If a block supports states, the colors can be overridden
 per-state.
 
 *format* is an array of strings. Each string is either a label or a placeholder.
@@ -295,10 +304,10 @@ format that defaults to the regular block format.
 # BOX MODEL
 
 The following options control the size and spacing of a block. They are shared
-by *\[workspace\]* and all block types.
+by *\[workspace\]*, *\[block\]*, and all block instances.
 
 *height*=_px_
-	The height of the block in pixels. The value includes borders. If omitted,
+	The height of the block in pixels. The value includes borders. If zero,
 	the block is sized to fit its contents.
 
 	Default: 0
@@ -322,8 +331,6 @@ by *\[workspace\]* and all block types.
 
 Colors are specified as _#rrggbb_ hex strings. Each color section has the
 following keys: *text*, *background*, and *border*.
-
-Unless explicitly set, blocks inherit colors from *\[bar.color\]*.
 
 The default colors are:
 

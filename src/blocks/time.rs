@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn weekday_changes() {
         let rasterizer = Rasterizer::new(crate::font::load("Sans"));
-        let mut config = TimeConfig::default(&ColorConfig::default());
+        let mut config = TimeConfig::default(&BlockConfig::default());
         config.timezone = tz::TimeZone::from_posix_tz("UTC-2").unwrap();
         config.format = vec![TimeFormatItem::Weekday, TimeFormatItem::Minute];
         config.weekdays = ["su", "mo", "tu", "we", "th", "fr", "sa"].map(String::from);

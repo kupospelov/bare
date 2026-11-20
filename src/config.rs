@@ -18,6 +18,7 @@ pub struct Config {
 
 #[derive(Debug, Default)]
 pub struct InstanceConfig {
+    pub block: BlockConfig,
     pub wireless: HashMap<String, WirelessConfig>,
     pub volume: HashMap<String, VolumeConfig>,
     pub battery: HashMap<String, BatteryConfig>,
@@ -181,17 +182,15 @@ pub struct VolumeConfig {
 }
 
 impl VolumeConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![
             VolumeFormatItem::Label("VOL".into()),
             VolumeFormatItem::Volume,
         ];
 
         Self {
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             properties: HashMap::new(),
             down: StateConfig {
                 color: ColorConfig {
@@ -272,7 +271,8 @@ pub struct ThresholdStateConfig<T = ()> {
 }
 
 impl BatteryConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![
             BatteryFormatItem::Label("BAT".into()),
             BatteryFormatItem::Capacity,
@@ -282,10 +282,7 @@ impl BatteryConfig {
             path: "/sys/class/power_supply/BAT0/uevent".into(),
             poll: true,
             design_capacity: false,
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -363,7 +360,8 @@ pub struct WirelessConfig {
 }
 
 impl WirelessConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![
             WirelessFormatItem::Label("NET".into()),
             WirelessFormatItem::Quality,
@@ -371,10 +369,7 @@ impl WirelessConfig {
 
         Self {
             interface: "wlan0".into(),
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -432,7 +427,7 @@ pub struct TimeConfig {
 }
 
 impl TimeConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
         let timezone = match tz::TimeZone::local() {
             Ok(tz) => tz,
             Err(e) => {
@@ -444,10 +439,7 @@ impl TimeConfig {
         Self {
             timezone,
             weekdays: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(String::from),
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: vec![TimeFormatItem::Hour, TimeFormatItem::Minute],
         }
     }
@@ -495,14 +487,12 @@ pub struct CpuConfig {
 }
 
 impl CpuConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![CpuFormatItem::Label("CPU".into()), CpuFormatItem::Usage];
 
         Self {
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -552,17 +542,15 @@ pub struct MemoryConfig {
 }
 
 impl MemoryConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![
             MemoryFormatItem::Label("MEM".into()),
             MemoryFormatItem::Usage,
         ];
 
         Self {
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -613,15 +601,13 @@ pub struct DriveConfig {
 }
 
 impl DriveConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec![DriveFormatItem::Label("DRV".into()), DriveFormatItem::Usage];
 
         Self {
             path: PathBuf::from("/"),
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             high: ThresholdStateConfig {
                 state: StateConfig {
@@ -672,14 +658,12 @@ pub struct FileConfig {
 }
 
 impl FileConfig {
-    pub(crate) fn default(color: &ColorConfig) -> Self {
+    pub(crate) fn default(block: &BlockConfig) -> Self {
+        let color = &block.color;
         let format = vec!["PTH".into()];
         Self {
             path: PathBuf::new(),
-            block: BlockConfig {
-                color: color.clone(),
-                ..BlockConfig::default()
-            },
+            block: block.clone(),
             format: format.clone(),
             down: StateConfig {
                 color: ColorConfig {
@@ -885,6 +869,13 @@ trait Visit {
     fn visit(&mut self, toml: Toml);
 }
 
+impl Visit for BlockConfig {
+    fn visit(&mut self, mut toml: Toml) {
+        self.visit(&mut toml);
+        toml.empty();
+    }
+}
+
 impl Visit for ColorConfig {
     fn visit(&mut self, mut toml: Toml) {
         toml.get("text").set(&mut self.text);
@@ -1049,48 +1040,52 @@ impl Visit for FileConfig {
 impl Config {
     pub fn parse(&mut self, table: toml::Table) -> InstanceConfig {
         let mut toml = Toml::new(table);
-        let mut instances = InstanceConfig::default();
         toml.get("bar").set(&mut self.bar);
         toml.get("workspace").visit(&mut self.workspace);
+
+        let mut instances = InstanceConfig::default();
+        instances.block.color.clone_from(&self.bar.color);
+        toml.get("block").visit(&mut instances.block);
+
         toml.merge(
             "cpu",
             &mut instances.cpu,
-            CpuConfig::default(&self.bar.color),
+            CpuConfig::default(&instances.block),
         );
         toml.merge(
             "memory",
             &mut instances.memory,
-            MemoryConfig::default(&self.bar.color),
+            MemoryConfig::default(&instances.block),
         );
         toml.merge(
             "drive",
             &mut instances.drive,
-            DriveConfig::default(&self.bar.color),
+            DriveConfig::default(&instances.block),
         );
         toml.merge(
             "wireless",
             &mut instances.wireless,
-            WirelessConfig::default(&self.bar.color),
+            WirelessConfig::default(&instances.block),
         );
         toml.merge(
             "volume",
             &mut instances.volume,
-            VolumeConfig::default(&self.bar.color),
+            VolumeConfig::default(&instances.block),
         );
         toml.merge(
             "battery",
             &mut instances.battery,
-            BatteryConfig::default(&self.bar.color),
+            BatteryConfig::default(&instances.block),
         );
         toml.merge(
             "time",
             &mut instances.time,
-            TimeConfig::default(&self.bar.color),
+            TimeConfig::default(&instances.block),
         );
         toml.merge(
             "file",
             &mut instances.file,
-            FileConfig::default(&self.bar.color),
+            FileConfig::default(&instances.block),
         );
         toml.empty();
         instances
@@ -1124,6 +1119,22 @@ pub(crate) mod tests {
     fn block_defaults() {
         let mut config = Config::default();
         let instances = parse_instances(&mut config, "");
+        assert_eq!(
+            instances.block,
+            BlockConfig {
+                color: ColorConfig {
+                    text: Color::rgb(0x64, 0x64, 0x64),
+                    background: Color::rgb(0, 0, 0),
+                    border: Color::rgb(0, 0, 0),
+                },
+                size: SizeConfig {
+                    margins: [0, 0, 0, 0],
+                    borders: [0, 0, 0, 0],
+                    corners: [0, 0, 0, 0],
+                    height: 0,
+                },
+            }
+        );
 
         let b = config.bar;
         assert_eq!(b.width, 28);
@@ -1170,6 +1181,8 @@ pub(crate) mod tests {
     fn panics_on_unknown_section_fields() {
         let sections = [
             "[bar]",
+            "[block]",
+            "[block.color]",
             "[workspace]",
             "[cpu.0]",
             "[memory.0]",
@@ -2117,21 +2130,44 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn block_height_override() {
+    fn block_overrides() {
         let mut config = Config::default();
         let instances = parse_instances(
             &mut config,
             r###"
-            [time.0]
-            height = 64
+            [bar.color]
+            text = "#112233"
+            background = "#445566"
+            border = "#778899"
 
-            [battery.0]
+            [block]
+            height = 40
             margins = [1, 2, 3, 4]
+            color.background = "#abcdef"
+            color.border = "#aabbcc"
+
+            [cpu.0]
+            height = 60
+            color.border = "#ffffff"
             "###,
         );
 
-        assert_eq!(instances.time.get("0").unwrap().block.size.height, 64);
-        assert_eq!(instances.battery.get("0").unwrap().block.size.height, 0);
+        assert_eq!(
+            instances.cpu["0"].block,
+            BlockConfig {
+                color: ColorConfig {
+                    text: Color::rgb(0x11, 0x22, 0x33),
+                    background: Color::rgb(0xab, 0xcd, 0xef),
+                    border: Color::rgb(0xff, 0xff, 0xff),
+                },
+                size: SizeConfig {
+                    margins: [1, 2, 3, 4],
+                    borders: [0, 0, 0, 0],
+                    corners: [0, 0, 0, 0],
+                    height: 60,
+                },
+            }
+        );
     }
 
     #[test]
