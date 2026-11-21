@@ -196,12 +196,10 @@ impl Blocks {
         }
     }
 
-    pub fn layout(&self, rasterizer: &Rasterizer, scale: i32, separator: u32) -> Layout {
+    pub fn layout(&self, rasterizer: &Rasterizer, scale: i32) -> Layout {
         let font_size = rasterizer.get_default_font_size(scale);
-        let separator = separator * scale as u32;
         Layout {
             font_size,
-            separator,
             blocks: self
                 .order
                 .iter()

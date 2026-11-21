@@ -36,7 +36,6 @@ pub struct BarConfig {
     pub width: u32,
     #[serde(deserialize_with = "duration_from_secs")]
     pub interval: Duration,
-    pub separator: u32,
     pub blocks: Vec<String>,
     pub color: ColorConfig,
 }
@@ -47,7 +46,6 @@ impl Default for BarConfig {
             fonts: "Sans Bold 9".into(),
             width: 28,
             interval: Duration::from_secs(10),
-            separator: 14,
             blocks: vec!["cpu.0".into(), "volume.0".into(), "time.0".into()],
             color: ColorConfig::default(),
         }
@@ -62,12 +60,24 @@ pub struct WorkspaceConfig {
     pub urgent: StateConfig,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct BlockConfig {
     pub color: ColorConfig,
 
     #[serde(flatten)]
     pub size: SizeConfig,
+}
+
+impl Default for BlockConfig {
+    fn default() -> Self {
+        Self {
+            color: ColorConfig::default(),
+            size: SizeConfig {
+                margins: [14, 2, 0, 0],
+                ..SizeConfig::default()
+            },
+        }
+    }
 }
 
 impl BlockConfig {
@@ -1128,7 +1138,7 @@ pub(crate) mod tests {
                     border: Color::rgb(0, 0, 0),
                 },
                 size: SizeConfig {
-                    margins: [0, 0, 0, 0],
+                    margins: [14, 2, 0, 0],
                     borders: [0, 0, 0, 0],
                     corners: [0, 0, 0, 0],
                     height: 0,
@@ -1139,7 +1149,6 @@ pub(crate) mod tests {
         let b = config.bar;
         assert_eq!(b.width, 28);
         assert_eq!(b.interval, Duration::from_secs(10));
-        assert_eq!(b.separator, 14);
         assert_eq!(b.blocks, ["cpu.0", "volume.0", "time.0"]);
         assert_eq!(b.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.color.background, Color::rgb(0, 0, 0));
@@ -1300,7 +1309,7 @@ pub(crate) mod tests {
         let m = instances.memory.get("0").unwrap();
         assert_eq!(m.block.size.height, 0);
         assert_eq!(m.block.size.borders, [0, 0, 0, 0]);
-        assert_eq!(m.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(m.block.size.margins, [14, 2, 0, 0]);
         assert_eq!(m.block.color, config.bar.color);
         assert_eq!(
             m.format,
@@ -1355,7 +1364,7 @@ pub(crate) mod tests {
         assert_eq!(c.path, PathBuf::from("/"));
         assert_eq!(c.block.size.height, 0);
         assert_eq!(c.block.size.borders, [0, 0, 0, 0]);
-        assert_eq!(c.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(c.block.size.margins, [14, 2, 0, 0]);
         assert_eq!(c.block.color, config.bar.color);
         assert_eq!(
             c.format,
@@ -1436,7 +1445,7 @@ pub(crate) mod tests {
         assert_eq!(b.path, PathBuf::from("/sys/class/power_supply/BAT0/uevent"));
         assert_eq!(b.block.size.height, 0);
         assert_eq!(b.block.size.borders, [0, 0, 0, 0]);
-        assert_eq!(b.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(b.block.size.margins, [14, 2, 0, 0]);
         assert_eq!(b.block.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(b.block.color.background, Color::rgb(0, 0, 0));
         assert_eq!(b.block.color.border, Color::rgb(0, 0, 0));
@@ -1521,7 +1530,7 @@ pub(crate) mod tests {
         assert_eq!(w.interface, "wlan0");
         assert_eq!(w.block.size.height, 0);
         assert_eq!(w.block.size.borders, [0, 0, 0, 0]);
-        assert_eq!(w.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(w.block.size.margins, [14, 2, 0, 0]);
         assert_eq!(w.block.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(w.block.color.background, Color::rgb(0, 0, 0));
         assert_eq!(w.block.color.border, Color::rgb(0, 0, 0));
@@ -2057,7 +2066,7 @@ pub(crate) mod tests {
         assert_eq!(f.path, PathBuf::from("/tmp/flag"));
         assert_eq!(f.block.size.height, 0);
         assert_eq!(f.block.size.borders, [0, 0, 0, 0]);
-        assert_eq!(f.block.size.margins, [0, 0, 0, 0]);
+        assert_eq!(f.block.size.margins, [14, 2, 0, 0]);
         assert_eq!(f.block.color.text, Color::rgb(0x64, 0x64, 0x64));
         assert_eq!(f.block.color.background, Color::rgb(0, 0, 0));
         assert_eq!(f.block.color.border, Color::rgb(0, 0, 0));
@@ -2270,7 +2279,7 @@ pub(crate) mod tests {
             "conf.d/ignored.toml",
             r###"
             [bar]
-            separator = 40
+            interval = 40
             "###,
         );
 
@@ -2278,7 +2287,7 @@ pub(crate) mod tests {
         config.load_file(path);
 
         assert_eq!(config.bar.width, 20);
-        assert_eq!(config.bar.separator, 14);
+        assert_eq!(config.bar.interval, Duration::from_secs(10));
     }
 
     #[test]

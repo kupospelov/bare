@@ -84,7 +84,6 @@ pub struct BlockLayout {
 #[derive(Default)]
 pub struct Layout {
     pub font_size: u32,
-    pub separator: u32,
     pub blocks: Vec<BlockLayout>,
 }
 
@@ -489,7 +488,6 @@ impl Renderer {
                     scale,
                 );
             }
-            y -= output_layout.separator as i32;
         }
     }
 }
@@ -667,7 +665,7 @@ mod tests {
         const BAR_WIDTH: u32 = 28;
         const BAR_HEIGHT: u32 = 1080;
         const SCALE: i32 = 1;
-        const SEPARATOR: u32 = 15;
+        const MARGIN_TOP: i32 = 15;
 
         let mut config = Config::default();
         let instances = parse_instances(
@@ -676,6 +674,9 @@ mod tests {
             [bar]
             fonts = "Sans 10px"
             blocks = [ "time.1", "time.empty", "time.0" ]
+
+            [block]
+            margins = [15, 0, 0, 0]
 
             [time.0]
             format = [ "CD" ]
@@ -695,7 +696,7 @@ mod tests {
         let mut renderer = Renderer::new(&config);
         let mut workspaces = Workspaces::new(&config.workspace, renderer.font_size);
         let mut blocks = Blocks::new(&config, &instances);
-        let layout = blocks.layout(&renderer.rasterizer, SCALE, SEPARATOR);
+        let layout = blocks.layout(&renderer.rasterizer, SCALE);
         let font_height = renderer.rasterizer.get_default_font_size(SCALE) as i32;
 
         // The first block is dirty.
@@ -749,7 +750,7 @@ mod tests {
 
         // The second block is dirty.
         let mut calls: Vec<Call> = Vec::new();
-        let start = (BAR_HEIGHT - SEPARATOR) as i32 - 2 * font_height;
+        let start = BAR_HEIGHT as i32 - MARGIN_TOP * SCALE - 2 * font_height;
         renderer.render_dirty(
             &mut calls,
             "Output1",

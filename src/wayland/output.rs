@@ -59,9 +59,8 @@ impl Output {
         &mut self,
         blocks: &Blocks,
         rasterizer: &crate::raster::Rasterizer,
-        separator: u32,
     ) {
-        self.layout = blocks.layout(rasterizer, self.scale, separator);
+        self.layout = blocks.layout(rasterizer, self.scale);
     }
 
     pub fn update_block_layout(
@@ -102,14 +101,13 @@ impl Output {
 }
 
 fn block_range(physical_height: i32, layout: &Layout, i: usize) -> Range {
-    let separator = layout.separator as i32;
     let mut y = physical_height;
     for block in &layout.blocks[..i] {
         if block.height < 1 {
             continue;
         }
 
-        y -= block.height + separator;
+        y -= block.height;
     }
     let height = layout.blocks[i].height;
     y -= height;
@@ -123,15 +121,10 @@ fn update_block_layout(
     layout: BlockLayout,
 ) -> Range {
     let range = block_range(physical_height, current, i);
-    let mut hdiff = current.blocks[i].height - layout.height;
+    let hdiff = current.blocks[i].height - layout.height;
     if hdiff == 0 {
         current.blocks[i] = layout;
         return range;
-    }
-
-    // Unhiding a block also restores its separator.
-    if current.blocks[i].height == 0 {
-        hdiff -= current.separator as i32;
     }
 
     let start =
@@ -157,25 +150,25 @@ mod tests {
     const PHYSICAL_HEIGHT: i32 = 100;
 
     fn create_layout() -> Layout {
+        // Blocks from bottom to top.
         Layout {
-            separator: 5,
             blocks: vec![
-                // 90..100
+                // 85..100
                 BlockLayout {
                     content: 10,
-                    height: 10,
+                    height: 15,
                     ..Default::default()
                 },
-                // 65..85
+                // 60..85
                 BlockLayout {
                     content: 20,
-                    height: 20,
+                    height: 25,
                     ..Default::default()
                 },
-                // 30..60
+                // 25..60
                 BlockLayout {
                     content: 30,
-                    height: 30,
+                    height: 35,
                     ..Default::default()
                 },
             ],
@@ -192,12 +185,12 @@ mod tests {
             1,
             BlockLayout {
                 content: 12,
-                height: 20,
+                height: 25,
                 ..Default::default()
             },
         );
 
-        assert_eq!(range, Range::new(65, 85));
+        assert_eq!(range, Range::new(60, 85));
         assert_eq!(current.blocks[1].content, 12);
     }
 
@@ -210,13 +203,13 @@ mod tests {
             1,
             BlockLayout {
                 content: 25,
-                height: 25,
+                height: 30,
                 ..Default::default()
             },
         );
 
-        assert_eq!(range, Range::new(25, 85));
-        assert_eq!(current.blocks[1].height, 25);
+        assert_eq!(range, Range::new(20, 85));
+        assert_eq!(current.blocks[1].height, 30);
     }
 
     #[test]
@@ -228,50 +221,50 @@ mod tests {
             1,
             BlockLayout {
                 content: 15,
-                height: 15,
+                height: 20,
                 ..Default::default()
             },
         );
 
-        assert_eq!(range, Range::new(30, 85));
-        assert_eq!(current.blocks[1].height, 15);
+        assert_eq!(range, Range::new(25, 85));
+        assert_eq!(current.blocks[1].height, 20);
     }
 
     #[test]
     fn new_layout_hides_block() {
         let mut current = create_layout();
 
-        // Hide block 1 and its separator.
+        // Hide block 1 and its margins.
         let range = update_block_layout(PHYSICAL_HEIGHT, &mut current, 1, BlockLayout::default());
-        assert_eq!(range, Range::new(30, 85));
+        assert_eq!(range, Range::new(25, 85));
         assert_eq!(
             block_range(PHYSICAL_HEIGHT, &current, 1),
             Range::new(85, 85)
         );
         assert_eq!(
             block_range(PHYSICAL_HEIGHT, &current, 2),
-            Range::new(55, 85)
+            Range::new(50, 85)
         );
 
-        // Unhide block 1 and its separator.
+        // Unhide block 1 and its margins.
         let range = update_block_layout(
             PHYSICAL_HEIGHT,
             &mut current,
             1,
             BlockLayout {
                 content: 20,
-                height: 20,
+                height: 25,
                 ..Default::default()
             },
         );
-        assert_eq!(range, Range::new(30, 85));
+        assert_eq!(range, Range::new(25, 85));
         assert_eq!(
             block_range(PHYSICAL_HEIGHT, &current, 1),
-            Range::new(65, 85)
+            Range::new(60, 85)
         );
         assert_eq!(
             block_range(PHYSICAL_HEIGHT, &current, 2),
-            Range::new(30, 60)
+            Range::new(25, 60)
         );
     }
 }

@@ -35,11 +35,6 @@ The *\[bar\]* section configures the bar.
 
 	Default: 10
 
-*separator*=_px_
-	Set the vertical space between adjacent blocks in pixels.
-
-	Default: 14
-
 *blocks*=_\[name, ...\]_
 	Define the blocks to render, from top to bottom. Each entry has the form
 	_type.name_. See *BLOCKS* for more information.
@@ -63,7 +58,7 @@ states. Each state defines a color section. See *COLORS* for more information.
 
 The *\[block\]* section accepts options described in *BOX MODEL* with the
 following defaults: *height*=0, *borders*=\[0, 0, 0, 0\], *corners*=\[0, 0, 0,
-0\] *margins*=\[0, 0, 0, 0\].
+0\], *margins*=\[14, 2, 0, 0\].
 
 In addition to that, the section accepts a color section that inherits omitted
 fields from *\[bar.color\]*. See *COLORS* for more information.
@@ -409,7 +404,6 @@ The default colors are:
 [bar]
 fonts = "Sans Bold 9, Font Awesome 7 Free Solid 10"
 width = 28
-separator = 14
 blocks = [
 	"volume.0",
 	"battery.0",
@@ -417,6 +411,9 @@ blocks = [
 	"time.cet",
 	"time.local",
 ]
+
+[block]
+margins = [14, 2, 0, 0]
 
 [workspace]
 height = 26

@@ -121,11 +121,7 @@ impl State {
             surface,
             layer_surface,
         );
-        output.update_block_layouts(
-            &self.blocks,
-            &self.renderer.rasterizer,
-            self.config.bar.separator,
-        );
+        output.update_block_layouts(&self.blocks, &self.renderer.rasterizer);
         self.outputs.insert(id, output);
     }
 
@@ -429,11 +425,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
                     o.scale = factor;
                     o.workspace_group
                         .set_scale(&state.config, state.renderer.font_size, factor);
-                    o.update_block_layouts(
-                        &state.blocks,
-                        &state.renderer.rasterizer,
-                        state.config.bar.separator,
-                    );
+                    o.update_block_layouts(&state.blocks, &state.renderer.rasterizer);
                 }
             }
             wl_output::Event::Done => {
